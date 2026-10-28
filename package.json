@@ -7,13 +7,17 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build --base=/v5/",
     "preview": "vite preview --host 0.0.0.0",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test:qa": "playwright test --config qa/playwright.config.mjs",
+    "test:reporting": "node qa/reporting.test.mjs"
   },
   "dependencies": {
-    "vite": "^6.3.0",
+    "lucide-react": "^0.468.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "lucide-react": "^0.468.0"
+    "vite": "^6.3.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
 }
