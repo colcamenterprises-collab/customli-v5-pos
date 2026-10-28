@@ -45,7 +45,7 @@ function bounds(params) {
   let from, to;
   if (period === 'custom') {
     const start=params.get('fromTime'),end=params.get('toTime');
-    if(start||end){if(!isLocalDateTime(start)||!isLocalDateTime(end)||start>=end)throw Object.assign(new Error('Choose a valid start and end date and time.'),{status:400});return {from:new Date(start+'+07:00').toISOString(),to:new Date(end+'+07:00').toISOString()};}
+    if(start||end){if(!isLocalDateTime(start)||!isLocalDateTime(end)||start>=end)throw Object.assign(new Error('Choose a valid start and end date and time.'),{status:400});return {from:new Date(start+'+07:00').toISOString(),to:new Date(end+'+07:00').toISOString(),shiftBasis:params.get('basis')==='shift'};}
     from = params.get('from'); to = params.get('to');
     if (!isDay(from) || !isDay(to) || from > to) throw Object.assign(new Error('Choose a valid date range.'), {status:400});
   } else if (period === 'yesterday') {
@@ -58,9 +58,9 @@ function bounds(params) {
     from = d.toISOString().slice(0,7)+'-01'; to = d.toISOString().slice(0,10);
   } else if (period === 'today') from = to = today;
   else throw Object.assign(new Error('Choose a supported reporting period.'), {status:400});
-  return {from:asUtc(from), to:asUtc(new Date(Date.parse(to+'T00:00:00Z')+86400000).toISOString().slice(0,10))};
+  return {from:asUtc(from), to:asUtc(new Date(Date.parse(to+'T00:00:00Z')+86400000).toISOString().slice(0,10)),shiftBasis:params.get('basis')==='shift'};
 }
-const whereOrders = r => r.shiftId ? {sql:'o.shift_id=?',args:[r.shiftId]} : {sql:'o.created_at>=? AND o.created_at<?',args:[r.from,r.to]};
+const whereOrders = r => r.shiftId ? {sql:'o.shift_id=?',args:[r.shiftId]} : r.shiftBasis ? {sql:'o.shift_id IN (SELECT id FROM shifts WHERE opened_at>=? AND opened_at<?)',args:[r.from,r.to]} : {sql:'o.created_at>=? AND o.created_at<?',args:[r.from,r.to]};
 const rows = (db, sql, args) => db.prepare(sql).all(...args);
 const cents = n => Number(n || 0);
 const headers = (res, status, data) => { res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); res.end(JSON.stringify(data)); };
@@ -81,9 +81,9 @@ export function handleReporting(url, method, res, db, user) {
     const filter=bounds(url.searchParams), w=whereOrders(filter), args=w.args;
     const completed = `(${w.sql}) AND o.status IN ('paid','refunded')`;
     const orders = rows(db,`SELECT o.*,s.opened_at AS shift_opened_at FROM orders o LEFT JOIN shifts s ON s.id=o.shift_id WHERE ${completed} ORDER BY o.created_at DESC`,args);
-    const adjustmentWhere=filter.shiftId?{sql:'o.shift_id=?',args:[filter.shiftId]}:{sql:'r.created_at>=? AND r.created_at<?',args:[filter.from,filter.to]};
+    const adjustmentWhere=filter.shiftId?{sql:'o.shift_id=?',args:[filter.shiftId]}:filter.shiftBasis?{sql:'o.shift_id IN (SELECT id FROM shifts WHERE opened_at>=? AND opened_at<?)',args:[filter.from,filter.to]}:{sql:'r.created_at>=? AND r.created_at<?',args:[filter.from,filter.to]};
     const refunds = rows(db,`SELECT r.*,o.receipt_number,o.created_at AS sale_at,o.payment_method AS sale_method,oi.name AS product_name,u.username AS approver FROM refunds r JOIN orders o ON o.id=r.order_id JOIN order_items oi ON oi.id=r.item_id LEFT JOIN users u ON u.username=r.approved_by WHERE ${adjustmentWhere.sql} ORDER BY r.created_at DESC`,adjustmentWhere.args);
-    const discountWhere=filter.shiftId?{sql:'o.shift_id=?',args:[filter.shiftId]}:{sql:'d.created_at>=? AND d.created_at<?',args:[filter.from,filter.to]};
+    const discountWhere=filter.shiftId?{sql:'o.shift_id=?',args:[filter.shiftId]}:filter.shiftBasis?{sql:'o.shift_id IN (SELECT id FROM shifts WHERE opened_at>=? AND opened_at<?)',args:[filter.from,filter.to]}:{sql:'d.created_at>=? AND d.created_at<?',args:[filter.from,filter.to]};
     const discounts = rows(db,`SELECT d.*,o.receipt_number,st.username AS staff,ap.username AS approver,GROUP_CONCAT(DISTINCT oi.name) AS related_products FROM discounts d JOIN orders o ON o.id=d.order_id LEFT JOIN order_items oi ON oi.order_id=o.id LEFT JOIN users st ON st.id=d.staff_id LEFT JOIN users ap ON ap.id=d.approved_by WHERE ${discountWhere.sql} GROUP BY d.id ORDER BY d.created_at DESC`,discountWhere.args);
     const gross=orders.reduce((s,o)=>s+cents(o.subtotal),0), discount=orders.reduce((s,o)=>s+cents(o.discount_total),0), refund=refunds.reduce((s,r)=>s+cents(r.amount),0), net=gross-discount-refund;
     const itemRows=rows(db,`SELECT oi.product_id,oi.name,COALESCE(oi.category,'Category unavailable') AS category, SUM(oi.quantity) AS gross_quantity, SUM(oi.price*oi.quantity) AS gross_revenue, COALESCE(SUM(oi.discount_amount),0) AS discount_allocated, COALESCE(SUM((SELECT SUM(r.quantity) FROM refunds r WHERE r.item_id=oi.id)),0) AS refunded_quantity, COALESCE(SUM((SELECT SUM(r.amount) FROM refunds r WHERE r.item_id=oi.id)),0) AS refunded_value FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE ${completed} GROUP BY oi.product_id,oi.name,category ORDER BY gross_revenue DESC`,args).map(i=>({...i,net_quantity:i.gross_quantity-i.refunded_quantity,discount_allocated:Number(i.discount_allocated||0),net_revenue:i.gross_revenue-Number(i.discount_allocated||0)-i.refunded_value}));
@@ -108,7 +108,7 @@ export function handleReporting(url, method, res, db, user) {
     else if(type==='items') data=itemRows;
     else if(type==='discounts') data=discounts;
     else if(type==='refunds') data=refunds;
-    else if(type==='payments') data={methods:paymentTotals,corrections:rows(db,`SELECT pc.*,o.receipt_number FROM payment_corrections pc JOIN orders o ON o.id=pc.order_id WHERE ${filter.shiftId?'o.shift_id=?':'pc.created_at>=? AND pc.created_at<?'} ORDER BY pc.created_at DESC`,args)};
+    else if(type==='payments') data={methods:paymentTotals,corrections:rows(db,`SELECT pc.*,o.receipt_number FROM payment_corrections pc JOIN orders o ON o.id=pc.order_id WHERE ${filter.shiftId?'o.shift_id=?':filter.shiftBasis?'o.shift_id IN (SELECT id FROM shifts WHERE opened_at>=? AND opened_at<?)':'pc.created_at>=? AND pc.created_at<?'} ORDER BY pc.created_at DESC`,args)};
     else data=shiftRows;
     headers(res,200,{filter,data});
     return true;
