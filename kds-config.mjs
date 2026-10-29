@@ -5,15 +5,15 @@ export function migrateKdsConfig(db){
  CREATE TABLE IF NOT EXISTS kds_product_routes(product_id TEXT PRIMARY KEY REFERENCES products(id),station TEXT NOT NULL REFERENCES kds_stations(name));
  CREATE TABLE IF NOT EXISTS kds_option_routes(option_id TEXT PRIMARY KEY REFERENCES modifier_options(id),station TEXT NOT NULL REFERENCES kds_stations(name));
  CREATE TABLE IF NOT EXISTS kds_config_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor_id TEXT NOT NULL,occurred_at TEXT NOT NULL,details TEXT NOT NULL);`);
- for(const [n,i] of [['QA Prep',0],['Expo',1]])db.prepare('INSERT OR IGNORE INTO kds_stations(name,sort_order) VALUES(?,?)').run(n,i);
+ for(const [n,i] of [[process.env.V5_KDS_DEFAULT_STATION||'QA Prep',0],['Expo',1]])db.prepare('INSERT OR IGNORE INTO kds_stations(name,sort_order) VALUES(?,?)').run(n,i);
  // The initial QA menu was previously routed to QA Prep. Preserve that default
  // for existing items while requiring explicit routes for newly added products.
  const seeded=db.prepare('SELECT COUNT(*) AS n FROM kds_product_routes').get().n;
- if(seeded===0)for(const p of db.prepare('SELECT id FROM products WHERE active=1').all())db.prepare('INSERT OR IGNORE INTO kds_product_routes(product_id,station) VALUES(?,?)').run(p.id,'QA Prep');
+ if(seeded===0)for(const p of db.prepare('SELECT id FROM products WHERE active=1').all())db.prepare('INSERT OR IGNORE INTO kds_product_routes(product_id,station) VALUES(?,?)').run(p.id,process.env.V5_KDS_DEFAULT_STATION||'QA Prep');
 }
 export function readKdsConfig(db){
  return {
-  environment:'test',
+  environment:process.env.V5_KDS_ENV||'test',
   stations:db.prepare('SELECT name,sort_order FROM kds_stations WHERE active=1 ORDER BY sort_order,name').all(),
   products:db.prepare('SELECT p.id,p.name,p.category,pr.station FROM products p LEFT JOIN kds_product_routes pr ON pr.product_id=p.id WHERE p.active=1 ORDER BY p.category,p.name').all(),
   options:db.prepare('SELECT o.id,o.name,g.name AS groupName,oroute.station FROM modifier_options o JOIN modifier_groups g ON o.group_id=g.id LEFT JOIN kds_option_routes oroute ON oroute.option_id=o.id WHERE o.active=1 AND g.active=1 ORDER BY g.name,o.name').all()
