@@ -54,3 +54,19 @@ export function kdsConfigRoute({db,p,method,user,b,res,send}){
  }catch(e){db.exec('ROLLBACK');throw e}
  return send(res,200,readKdsConfig(db));
 }
+
+export function kdsOutboxRoute({db,p,method,user,res,send}){
+ if(!p.startsWith('/kds-outbox'))return null;
+ if(user.role!=='Owner')bad(403,'Only an Owner can manage kitchen deliveries.');
+ if(p==='/kds-outbox'&&method==='GET'){
+  const counters=db.prepare('SELECT status,COUNT(*) AS count FROM kitchen_outbox GROUP BY status').all();
+  const failed=db.prepare("SELECT o.id,o.receipt_number,k.attempts,k.last_error,k.created_at FROM kitchen_outbox k JOIN orders o ON o.id=k.order_id WHERE k.status='failed' ORDER BY k.created_at DESC LIMIT 20").all();
+  return send(res,200,{counts:Object.fromEntries(counters.map(x=>[x.status,x.count])),failed});
+ }
+ if(p==='/kds-outbox/retry'&&method==='POST'){
+  const result=db.prepare("UPDATE kitchen_outbox SET status='pending',attempts=0,last_error=NULL WHERE status='failed'").run();
+  db.prepare('INSERT INTO kds_config_audit(actor_id,occurred_at,details) VALUES(?,?,?)').run(user.id,new Date().toISOString(),JSON.stringify({action:'retry_failed_kitchen_orders',count:result.changes}));
+  return send(res,200,{retrying:result.changes});
+ }
+ bad(405,'Unsupported kitchen delivery action.');
+}
