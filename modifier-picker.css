@@ -1,0 +1,32 @@
+
+/* Customli V5 modifier selection — isolated Phase 1 acceptance UI. */
+.modifier-modal-backdrop{position:fixed;z-index:70;inset:0;display:grid;place-items:center;background:rgba(17,25,26,.58);backdrop-filter:blur(3px);padding:20px}
+.modifier-modal{background:#fff;border-radius:24px;border:1px solid #e8efea;box-shadow:0 24px 85px #0c222d50;width:min(540px,100%);max-height:min(90vh,840px);overflow:hidden;display:flex;flex-direction:column;color:#24312b}
+.modifier-modal header{display:flex;justify-content:space-between;align-items:flex-start;padding:25px 26px 18px;border-bottom:1px solid #e7efeb;gap:15px}
+.modifier-kicker{color:#528777;letter-spacing:.11em;font-size:10px;font-weight:720}
+.modifier-modal h2{font-size:22px;letter-spacing:-.7px;margin:8px 0 0;font-weight:680}
+.modifier-close{background:#f3f7f5;border:1px solid #e3ece7;border-radius:10px;width:36px;height:36px;display:grid;place-items:center}
+.modifier-modal-content{padding:4px 26px 20px;overflow-y:auto;min-height:0}
+.modifier-group{border-bottom:1px solid #eef1ef;padding:19px 0}
+.modifier-group-title{display:flex;align-items:baseline;justify-content:space-between;gap:15px;margin-bottom:11px}
+.modifier-group-title strong{font-size:13px;font-weight:680;color:#263a30}
+.modifier-group-title span{font-size:11px;color:#78887f}
+.modifier-option{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:55px;padding:7px 1px}
+.modifier-option>div:first-child{display:flex;flex-direction:column;gap:5px}
+.modifier-option strong{font-size:13px;font-weight:600;color:#394740}
+.modifier-option span{font-size:11px;color:#7a8a83}
+.modifier-qty{display:flex;align-items:center;gap:12px}
+.modifier-qty span{color:#264a3c;font-weight:700;font-size:13px;min-width:13px;text-align:center}
+.modifier-qty button{border:1px solid #d7e8e0;border-radius:10px;display:grid;place-items:center;height:32px;width:32px;color:#1b7b5e;background:#eef8f3}
+.modifier-qty button:disabled{opacity:.28}
+.modifier-notes{display:flex;flex-direction:column;gap:8px;margin-top:17px;color:#60746b;font-weight:590;font-size:12px}
+.modifier-notes textarea{resize:vertical;min-height:66px;border:1px solid #dae9e0;border-radius:11px;padding:12px;color:#304239;font-family:inherit;outline:0;background:#fbfdfc;font-size:13px}
+.modifier-notes textarea:focus{border-color:#65c8a5;box-shadow:0 0 0 3px #7dddbc25}
+.modifier-error{background:#fff1ed;color:#aa453f;border:1px solid #f3d6d1;padding:11px 13px;border-radius:10px;margin-top:15px;font-size:12px}
+.modifier-modal footer{padding:17px 26px 23px;border-top:1px solid #e6eee8;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fcfefd}
+.modifier-modal footer>div{display:flex;flex-direction:column;gap:5px}
+.modifier-modal footer span{font-size:11px;color:#829087}
+.modifier-modal footer strong{font-size:21px;letter-spacing:-.7px;color:#183b2b}
+.modifier-modal footer button{background:#0ca888;color:#fff;border:0;border-radius:12px;padding:13px 22px;font-weight:690;font-size:13px;min-height:44px}
+.modifier-modal footer button:hover{background:#078a70}
+@media(max-width:650px){.modifier-modal-backdrop{padding:9px}.modifier-modal{border-radius:17px;max-height:94vh}.modifier-modal header{padding:18px 18px 14px}.modifier-modal-content{padding:0 18px 15px}.modifier-modal footer{padding:13px 18px 17px}.modifier-modal h2{font-size:20px}}
