@@ -1,0 +1,27 @@
+.custom-select{position:relative;display:inline-flex;align-items:stretch;min-width:0;max-width:100%;vertical-align:middle;color:var(--ink,#202526)}
+.custom-select__native{position:absolute;width:1px;height:1px;min-width:0;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;opacity:0;pointer-events:none}
+.custom-select__trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-width:0;min-height:42px;padding:0 12px;border:1px solid var(--control-border,#dfe5e4);border-radius:var(--control-radius,10px);background:var(--control-surface,#fff);color:var(--control-text,#26302f);font:inherit;font-size:13px;font-weight:500;line-height:1.25;text-align:left;box-shadow:0 1px 2px #14231a08;touch-action:manipulation;transition:border-color .14s,box-shadow .14s,background-color .14s}
+.custom-select__trigger.is-invalid{border-color:var(--error,#c64242);box-shadow:0 0 0 3px #c6424218}
+.custom-select__trigger:hover:not(:disabled){border-color:var(--control-border-hover,#bdcbc7)}
+.custom-select__trigger:focus-visible,.custom-select__trigger.is-open{outline:0;border-color:var(--green,#0cae8b);box-shadow:0 0 0 3px var(--control-focus,#0cae8b20)}
+.custom-select__trigger:disabled{cursor:not-allowed;opacity:.55;background:var(--control-disabled,#f4f6f5)}
+.custom-select__value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.custom-select__value.is-placeholder{color:var(--sub,#7d868c)}
+.custom-select__chevron{width:16px;height:16px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;color:var(--control-muted,#77817f);transition:transform .14s}
+.custom-select__trigger.is-open .custom-select__chevron{transform:rotate(180deg)}
+.custom-select__menu{position:fixed;z-index:1600;overflow:auto;overscroll-behavior:contain;padding:5px;border:1px solid var(--control-border,#dfe5e4);border-radius:var(--control-radius,10px);background:var(--menu-surface,#fff);color:var(--control-text,#26302f);box-shadow:0 12px 34px #14231a1c,0 2px 6px #14231a0d;font:inherit;font-size:13px;scrollbar-width:thin;touch-action:pan-y}
+.custom-select__option{display:flex;align-items:center;min-height:40px;padding:9px 10px;border-radius:7px;color:var(--control-text,#26302f);line-height:1.35;cursor:pointer;user-select:none}
+.custom-select__option:hover,.custom-select__option.is-active{background:var(--option-hover,#f1f7f4)}
+.custom-select__option.is-selected{background:var(--option-selected,#e9f5ef);color:var(--option-selected-text,#17674f);font-weight:600}
+.custom-select__option.is-disabled{color:#a5adaa;cursor:not-allowed}
+.custom-select__option.is-disabled:hover{background:transparent}
+.selectors .custom-select{width:50%;flex:1 1 50%}
+.checkout>.custom-select,.checkout .custom-select{width:100%}
+.report-controls>.custom-select{flex:1 1 170px;min-width:140px}
+.filter-line .custom-select{min-width:130px}
+.filter-basis .custom-select{min-width:190px}
+.food-form .custom-select,.kds-form-label .custom-select{width:100%}
+.food-component-row>.custom-select,.kds-routing-item>.custom-select{width:150px;max-width:48%;flex-shrink:0}
+.kds-report-actions>.custom-select{min-width:140px}
+.login-card .custom-select,.receipt form .custom-select,.pin-modal .custom-select,.correction-modal .custom-select{width:100%}
+@media(max-width:600px){.custom-select__trigger{min-height:44px}.custom-select__option{min-height:44px}.report-controls>.custom-select{flex-basis:100%}}
