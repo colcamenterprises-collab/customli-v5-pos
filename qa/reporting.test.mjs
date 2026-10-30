@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { handleReporting, migrateReporting } from '../reporting.mjs';
+import {migrateSalesChannels} from '../sales-channels.mjs';
 import { randomUUID } from 'node:crypto';
 
 const db=new DatabaseSync(':memory:');
@@ -15,7 +16,7 @@ CREATE TABLE refunds(id TEXT PRIMARY KEY,order_id TEXT,item_id TEXT,quantity INT
 CREATE TABLE payment_corrections(id TEXT PRIMARY KEY,order_id TEXT,previous_method TEXT,new_method TEXT,reason TEXT,created_at TEXT,approved_by TEXT);
 CREATE TABLE shift_cash_movements(id TEXT PRIMARY KEY,shift_id TEXT,direction TEXT,amount INTEGER,description TEXT,place TEXT,recorded_by TEXT,created_at TEXT);
 `);
-migrateReporting(db);
+migrateReporting(db);migrateSalesChannels(db);
 const uid=role=>{const id=randomUUID();db.prepare('INSERT INTO users(id,username,role,salt,password_hash) VALUES(?,?,?,?,?)').run(id,role.toLowerCase(),role,'s','h');return id};
 const owner=uid('Owner'), manager=uid('Manager'), cashier=uid('Cashier');
 const shift=randomUUID();db.prepare('INSERT INTO shifts(id,opened_at,closed_at,opening_cash,closing_cash,expected_cash,variance) VALUES(?,?,?,?,?,?,?)').run(shift,'2026-10-26T17:00:00.000Z','2026-10-27T16:00:00.000Z',5000,10000,99999,0);

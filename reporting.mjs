@@ -70,7 +70,7 @@ function csv(res, filename, data) {
   res.writeHead(200, {'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="${filename}"`,'Cache-Control':'no-store'});
   res.end('\uFEFF'+body);
 }
-const reports = new Set(['overview','items','transactions','discounts','refunds','payments','shifts']);
+const reports = new Set(['overview','items','transactions','discounts','refunds','payments','shifts','channels']);
 
 export function handleReporting(url, method, res, db, user) {
   const p = url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');
@@ -87,14 +87,17 @@ export function handleReporting(url, method, res, db, user) {
     const discounts = rows(db,`SELECT d.*,o.receipt_number,st.username AS staff,ap.username AS approver,GROUP_CONCAT(DISTINCT oi.name) AS related_products FROM discounts d JOIN orders o ON o.id=d.order_id LEFT JOIN order_items oi ON oi.order_id=o.id LEFT JOIN users st ON st.id=d.staff_id LEFT JOIN users ap ON ap.id=d.approved_by WHERE ${discountWhere.sql} GROUP BY d.id ORDER BY d.created_at DESC`,discountWhere.args);
     const gross=orders.reduce((s,o)=>s+cents(o.subtotal),0), discount=orders.reduce((s,o)=>s+cents(o.discount_total),0), refund=refunds.reduce((s,r)=>s+cents(r.amount),0), net=gross-discount-refund;
     const itemRows=rows(db,`SELECT oi.product_id,oi.name,COALESCE(oi.category,'Category unavailable') AS category, SUM(oi.quantity) AS gross_quantity, SUM(oi.price*oi.quantity) AS gross_revenue, COALESCE(SUM(oi.discount_amount),0) AS discount_allocated, COALESCE(SUM((SELECT SUM(r.quantity) FROM refunds r WHERE r.item_id=oi.id)),0) AS refunded_quantity, COALESCE(SUM((SELECT SUM(r.amount) FROM refunds r WHERE r.item_id=oi.id)),0) AS refunded_value FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE ${completed} GROUP BY oi.product_id,oi.name,category ORDER BY gross_revenue DESC`,args).map(i=>({...i,net_quantity:i.gross_quantity-i.refunded_quantity,discount_allocated:Number(i.discount_allocated||0),net_revenue:i.gross_revenue-Number(i.discount_allocated||0)-i.refunded_value}));
-    const paymentTotals={Cash:{count:0,total:0},QR:{count:0,total:0}};
+    const channelSummary=Object.values(orders.reduce((map,o)=>{const id=o.channel_id||'in-store';const row=map[id]||(map[id]={channel_id:id,orders:0,gross_sales:0,discounts:0,refunds:0,net_sales:0});row.orders++;row.gross_sales+=cents(o.subtotal);row.discounts+=cents(o.discount_total);row.net_sales+=cents(o.subtotal)-cents(o.discount_total);return map},{}));
+    for(const r of refunds){const id=db.prepare('SELECT channel_id FROM orders WHERE id=?').get(r.order_id)?.channel_id||'in-store';const row=channelSummary.find(x=>x.channel_id===id);if(row){row.refunds+=cents(r.amount);row.net_sales-=cents(r.amount)}}
+    for(const row of channelSummary)row.name=db.prepare('SELECT name FROM sales_channels WHERE id=?').get(row.channel_id)?.name||row.channel_id;
+    const paymentTotals={Cash:{count:0,total:0},QR:{count:0,total:0},Partner:{count:0,total:0}};
     for(const o of orders)if(paymentTotals[o.payment_method]){paymentTotals[o.payment_method].count++;paymentTotals[o.payment_method].total+=cents(o.total)-cents(o.discount_total);}
     for(const r of refunds)if(paymentTotals[r.payment_method])paymentTotals[r.payment_method].refunds=(paymentTotals[r.payment_method].refunds||0)+cents(r.amount);
     const shiftRows=rows(db,`SELECT s.*, (SELECT COALESCE(SUM(o.total-o.discount_total),0) FROM orders o WHERE o.shift_id=s.id AND o.status IN ('paid','refunded') AND o.payment_method='Cash') AS cash_sales,(SELECT COALESCE(SUM(o.total-o.discount_total),0) FROM orders o WHERE o.shift_id=s.id AND o.status IN ('paid','refunded') AND o.payment_method='QR') AS qr_sales,(SELECT COALESCE(SUM(r.amount),0) FROM refunds r WHERE r.payment_method='Cash' AND r.order_id IN (SELECT id FROM orders WHERE shift_id=s.id)) AS cash_refunds,(SELECT COALESCE(SUM(r.amount),0) FROM refunds r WHERE r.payment_method='QR' AND r.order_id IN (SELECT id FROM orders WHERE shift_id=s.id)) AS qr_refunds,(SELECT COALESCE(SUM(amount),0) FROM shift_cash_movements m WHERE m.shift_id=s.id AND direction='in') AS money_in,(SELECT COALESCE(SUM(amount),0) FROM shift_cash_movements m WHERE m.shift_id=s.id AND direction='out') AS money_out,(SELECT COALESCE(SUM(CASE direction WHEN 'in' THEN amount ELSE -amount END),0) FROM shift_cash_movements m WHERE m.shift_id=s.id) AS net_movements FROM shifts s WHERE ${filter.shiftId?'s.id=?':'s.opened_at>=? AND s.opened_at<?'} ORDER BY s.opened_at DESC`,filter.shiftId?[filter.shiftId]:args).map(s=>({...s,expected_cash:Number(s.opening_cash)+Number(s.cash_sales)-Number(s.cash_refunds)+Number(s.net_movements),variance:s.closing_cash===null?null:Number(s.closing_cash)-(Number(s.opening_cash)+Number(s.cash_sales)-Number(s.cash_refunds)+Number(s.net_movements))}));
     const type=url.searchParams.get('type')||'overview';
     if(!reports.has(type))throw Object.assign(new Error('Choose a report type.'),{status:400});
     if(p.endsWith('/export')) {
-      const map={transactions:{columns:['receipt_number','created_at','shift_id','status','payment_method','subtotal','discount_total','refund_total','total'],rows:orders.map(o=>({...o,subtotal:o.subtotal/100,discount_total:o.discount_total/100,refund_total:o.refund_total/100,total:(o.total-o.discount_total-o.refund_total)/100}))},
+      const map={channels:{columns:['name','orders','gross_sales','discounts','refunds','net_sales'],rows:channelSummary.map(c=>({...c,gross_sales:c.gross_sales/100,discounts:c.discounts/100,refunds:c.refunds/100,net_sales:c.net_sales/100}))},transactions:{columns:['receipt_number','created_at','shift_id','channel_id','partner_reference','partner_item_discount','partner_order_discount','status','payment_method','subtotal','discount_total','refund_total','total'],rows:orders.map(o=>({...o,subtotal:o.subtotal/100,discount_total:o.discount_total/100,partner_item_discount:(o.partner_item_discount||0)/100,partner_order_discount:(o.partner_order_discount||0)/100,refund_total:o.refund_total/100,total:(o.total-o.discount_total-o.refund_total)/100}))},
       items:{columns:['product_id','name','category','gross_quantity','refunded_quantity','net_quantity','gross_revenue','discount_allocated','refunded_value','net_revenue'],rows:itemRows.map(i=>({...i,gross_revenue:i.gross_revenue/100,discount_allocated:i.discount_allocated/100,refunded_value:i.refunded_value/100,net_revenue:i.net_revenue/100}))},
       discounts:{columns:['receipt_number','created_at','amount','reason','related_products','staff','approver'],rows:discounts.map(d=>({...d,amount:d.amount/100}))},
       refunds:{columns:['receipt_number','created_at','product_name','quantity','amount','reason','approver','payment_method'],rows:refunds.map(r=>({...r,amount:r.amount/100}))},
@@ -103,8 +106,8 @@ export function handleReporting(url, method, res, db, user) {
       csv(res,`v5-${type}.csv`,map); return true;
     }
     let data;
-    if(type==='overview') data={timezone:'Asia/Bangkok',gross_sales:gross,discounts:discount,refunds:refund,net_sales:net,total_orders:orders.length,average_order_value:orders.length?Math.round(net/orders.length):0,cash_sales:paymentTotals.Cash.total,qr_sales:paymentTotals.QR.total};
-    else if(type==='transactions') data=orders;
+    if(type==='overview') data={timezone:'Asia/Bangkok',gross_sales:gross,discounts:discount,refunds:refund,net_sales:net,total_orders:orders.length,average_order_value:orders.length?Math.round(net/orders.length):0,cash_sales:paymentTotals.Cash.total,qr_sales:paymentTotals.QR.total,partner_sales:paymentTotals.Partner.total,channel_summary:channelSummary};
+    else if(type==='channels')data=channelSummary;else if(type==='transactions') data=orders;
     else if(type==='items') data=itemRows;
     else if(type==='discounts') data=discounts;
     else if(type==='refunds') data=refunds;
