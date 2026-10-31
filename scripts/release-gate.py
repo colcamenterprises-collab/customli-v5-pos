@@ -28,6 +28,7 @@ with open(ROOT/'.git/v5-release-gate.lock','w') as lock:
  tested=state()
  if any(started[k]!=tested[k] for k in ['commit','source']):sys.exit('BLOCKED: source changed during build.')
  for test in ['qa/onboarding.test.mjs','qa/onboarding.http.test.mjs','qa/expenses.test.mjs','qa/expenses.http.test.mjs','qa/phase1.integration.mjs','qa/print-studio.test.mjs','qa/print-contracts.test.mjs','qa/sales-channels.test.mjs'] :run('node',test)
+ run('node','qa/discount-rules.e2e.mjs')
  for dist,base in [('dist','/v5/'),('test-dist','/v5-test/')]:run('node','qa/ui-release.mjs',env={**os.environ,'UI_DIST':dist,'UI_BASE':base,'ALLOW_VISUAL_BASELINE_UPDATE':''})
  if state()!=tested:sys.exit('BLOCKED: source or built artifacts changed while tests were running.')
  result.write_text(json.dumps({'status':'PASS','testedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'state':state()},indent=2)+'\n')
