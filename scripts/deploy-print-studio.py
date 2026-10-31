@@ -22,7 +22,7 @@ try:
  build=source/'pos'/('test-dist' if test else 'dist');run('rsync','-a','--exclude=index.html',str(build)+'/',str(target/'dist')+'/');shutil.copy2(build/'index.html',target/'dist'/'index.html')
  dashbuild=source/'dashboard'/'customli-v5-dashboard'/('dist' if test else 'prod-dist');dashdest=dash/('dist' if test else 'prod-dist');run('rsync','-a','--exclude=index.html',str(dashbuild)+'/',str(dashdest)+'/');shutil.copy2(dashbuild/'index.html',dashdest/'index.html')
  shutil.copy2(source/'dashboard'/'customli-v5-kds'/'kds-order-bridge.mjs',kds/'kds-order-bridge.mjs')
- dropin.write_text('[Service]\nEnvironment=V5_API_PREFIX='+('/v5-test/api' if test else '/v5/api')+'\nEnvironment=V5_PRINT_KDS_DB='+str(kdsdata/'kds.sqlite')+'\nEnvironment=V5_PRINT_KDS_TENANT='+('customli-v5-test' if test else 'customli-v5-prod')+'\n')
+ dropin.write_text('[Service]\nEnvironment=V5_DATA_DIR='+str(data)+'\nEnvironment=V5_API_PREFIX='+('/v5-test/api' if test else '/v5/api')+'\nEnvironment=V5_PRINT_KDS_DB='+str(kdsdata/'kds.sqlite')+'\nEnvironment=V5_PRINT_KDS_TENANT='+('customli-v5-test' if test else 'customli-v5-prod')+'\n')
  run('systemctl','daemon-reload');run('systemctl','start',service,publisher)
  url='http://127.0.0.1:'+('4396/v5-test' if test else '4395/v5')+'/api/health';ready=False
  for _ in range(40):

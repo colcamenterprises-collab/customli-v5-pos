@@ -1,4 +1,7 @@
+import {mkdirSync} from 'node:fs';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+if(process.env.V5_DATA_DIR){process.env.XDG_CACHE_HOME=path.join(process.env.V5_DATA_DIR,'font-cache');mkdirSync(process.env.XDG_CACHE_HOME,{recursive:true});}
 process.env.FONTCONFIG_FILE ||= fileURLToPath(new URL('./fonts/fonts.conf',import.meta.url));
 import sharp from 'sharp';
 import QRCode from 'qrcode';
