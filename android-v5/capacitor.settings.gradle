@@ -1,0 +1,2 @@
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File(System.getenv('CAPACITOR_ANDROID_DIR') ?: '../node_modules/@capacitor/android/capacitor')

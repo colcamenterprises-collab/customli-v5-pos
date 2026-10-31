@@ -1,0 +1,20 @@
+{
+  "appId": "io.customli.v5pos",
+  "appName": "Customli V5 POS",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "server": {
+    "url": "https://customli.io/v5/",
+    "cleartext": false,
+    "allowNavigation": [
+      "customli.io"
+    ]
+  }
+}

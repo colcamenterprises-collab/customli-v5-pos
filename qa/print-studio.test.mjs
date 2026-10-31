@@ -9,7 +9,15 @@ try{for(let i=0;i<100;i++){try{await fetch(base+'/health');break}catch{await new
  const device=ok(await call('/print/devices',{name:'Counter',physicalKey:'192.168.1.20',profile:{}}),201);assert.equal((await call('/print/devices',{name:'Duplicate',physicalKey:'192.168.1.20',profile:{}})).status,409);
  for(let i=0;i<2;i++)ok(await call('/print/routes',{printerId:device.id,templateId:t.id,trigger:'sale.completed'}));const product=ok(await call('/products'))[0];ok(await call('/print/packing-rules',{productId:product.id,config:{kind:'meal',mode:'separate',components:[{name:'Burger',quantity:1},{name:'Fries',quantity:1},{name:'Drink',quantity:1}]}}));ok(await call('/shift/open',{openingCash:0}),201);
  const quote=ok(await call('/print/payment-request',{items:[{productId:product.id,quantity:2,price:1}]}));assert.equal(quote.status,'unpaid');assert.equal(quote.amountDueMinor,product.price*2);assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);
- const body={idempotencyKey:'print-test-sale',items:[{productId:product.id,quantity:2}],paymentMethod:'QR'},order=ok(await call('/orders',body),201);ok(await call('/orders',body));state=ok(await call('/print/state'));assert.equal(state.jobs.length,1);
+ const body={idempotencyKey:'print-test-sale',items:[{productId:product.id,quantity:2}],paymentMethod:'QR'},order=ok(await call('/orders',body),201);ok(await call('/orders',body));
+ const raster=ok(await call('/print/native-receipt',{orderId:order.id,paperWidth:80}));
+ assert.equal(raster.format,'escpos');assert.equal(raster.printed,false);assert(Buffer.from(raster.base64,'base64').length>1000);
+ assert.equal(Buffer.from(raster.base64,'base64')[0],27); // ESC/POS reset
+ const raster58=ok(await call('/print/native-receipt',{orderId:order.id,paperWidth:58}));
+ assert.equal(raster58.paperWidth,58);
+ assert.equal((await call('/print/native-receipt',{orderId:order.id,paperWidth:59})).status,400);
+ assert.equal((await call('/print/native-receipt',{orderId:'invalid',paperWidth:80})).status,400);
+ state=ok(await call('/print/state'));assert.equal(state.jobs.length,1);
  const packing=ok(await call('/print/packing',{orderId:order.id}));assert.equal(packing.units.length,6);assert.equal(packing.lines[0].components.length,3);assert(!packing.units.some(x=>x.name===product.name));const kitchen=JSON.parse(db.prepare('SELECT payload FROM kitchen_outbox WHERE order_id=?').get(order.id).payload);assert.equal(kitchen.items[0].packingComponents.length,3);
  const before=db.prepare('SELECT snapshot FROM print_jobs').get().snapshot;assert.throws(()=>db.prepare("UPDATE print_jobs SET snapshot='{}'").run());ok(await call('/print/templates',{id:t.id,expectedVersion:updated.version,config:{...updated.config,businessName:'Different name'}}));assert.equal(db.prepare('SELECT snapshot FROM print_jobs').get().snapshot,before);
  const pair=ok(await call('/print/devices/'+device.id+'/pair',{})),paired=ok(await call('/print-agent/pair',{code:pair.code},''));assert.equal((await call('/print-agent/pair',{code:pair.code},'')).status,401);const headers={'X-Print-Session':randomUUID()};
