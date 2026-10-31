@@ -1,0 +1,18 @@
+[Unit]
+Description=Customli local print gateway
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=customliprint
+Environment=CUSTOMLI_PRINT_HOME=/var/lib/customli-print
+ExecStart=/usr/bin/node /opt/customli-print/print-gateway.mjs run
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/customli-print /tmp
+[Install]
+WantedBy=multi-user.target

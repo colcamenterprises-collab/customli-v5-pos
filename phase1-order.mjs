@@ -149,7 +149,8 @@ export function enqueueKitchenOrder(db,order){
   quantity:item.quantity,unitPriceMinor:item.price,modifiers:item.modifiers||[],
   instructions:item.instructions||'',lineNumber:i+1
  }));
- const snapshot={schemaVersion:1,orderId:order.id,revision:1,sourceReceiptId:String(order.receipt_number),placedAt:order.created_at,kitchenReleaseAt:order.created_at,channel:order.mode,items,
+ const packing=db.prepare('SELECT snapshot FROM order_packing_snapshots WHERE order_id=?').get(order.id);if(packing){const saved=JSON.parse(packing.snapshot);for(const item of items){const line=saved.lines.find(l=>l.lineId===item.lineId);if(line)item.packingComponents=line.components;}}
+ const snapshot={schemaVersion:1,orderId:order.id,revision:1,sourceReceiptId:String(order.receipt_number),placedAt:order.created_at,kitchenReleaseAt:order.created_at,channel:order.mode,partnerReference:order.partner_reference||'',items,
   // Routing and production components must be resolved by the KDS integration adapter, not fabricated here.
   routingStatus:'awaiting_configuration'};
  db.prepare('INSERT INTO kitchen_outbox(id,order_id,revision,event_type,payload,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),order.id,1,'order.created',JSON.stringify(snapshot),t);
