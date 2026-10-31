@@ -1,0 +1,12 @@
+.detail{max-height:none;overflow:visible}
+.modal:has(.detail){width:min(510px,calc(100vw - 24px));max-height:calc(100dvh - 20px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding:21px 25px}
+.modal:has(.detail)::-webkit-scrollbar{display:none}
+.modal .detail{max-height:none;overflow:visible;margin:12px 0;padding:12px 0;gap:8px 16px;grid-template-columns:minmax(0,1fr) max-content}
+.modal .detail span{line-height:1.45;overflow-wrap:anywhere}
+.modal .detail strong{max-width:170px;overflow-wrap:anywhere}
+.modal .icon{height:44px;width:44px;font-size:25px;margin-bottom:9px}
+.modal h2{font-size:21px;margin:0 0 4px}
+.modal p{margin:0}
+.modal .actions{gap:8px;margin-top:12px}
+.modal .actions button{min-height:38px}
+@media(max-width:420px){.modal{padding:18px 15px}}
