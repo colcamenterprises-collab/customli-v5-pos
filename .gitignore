@@ -4,3 +4,5 @@ dist/
 qa/print-results/
 
 test-dist/
+
+qa/release-results/

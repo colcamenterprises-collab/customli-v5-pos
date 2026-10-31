@@ -9,6 +9,8 @@ def stats():
 def backup_db(src,name):
  with sqlite3.connect('file:'+str(src)+'?mode=ro',uri=True) as c,sqlite3.connect(backup/name) as dest:
   c.backup(dest);assert dest.execute('pragma integrity_check').fetchone()[0]=='ok'
+# Gate must pass before backups, database access for deployment, or stopping services.
+run('python3',str(source/'pos/scripts/release-gate.py'),'--verify')
 before=stats();
 if not test and before['shifts'][1]:raise SystemExit('Production shift is open. Deployment not started.')
 run('rsync','-a','--exclude=node_modules','--exclude=.git',str(target)+'/',str(backup/'pos-source')+'/');run('rsync','-a',str(dash/('dist' if test else 'prod-dist'))+'/',str(backup/'dashboard-dist')+'/');shutil.copy2(kds/'kds-order-bridge.mjs',backup/'kds-order-bridge.mjs')
