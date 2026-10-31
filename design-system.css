@@ -1,0 +1,4 @@
+/* Shared V5 tokens and branding. Keep feature selectors in their own stylesheets. */
+:root{--green:#0cae8b;--ink:#161b1b;--sub:#777;--stroke:#e8e8e8;--paper:#fff;--page:#f1f3f3;--control-border:#dfe5e4;--control-border-hover:#bdcbc7;--control-surface:#fff;--control-text:#26302f;--control-muted:#77817f;--control-disabled:#f4f6f5;--control-focus:#0cae8b20;--menu-surface:#fff;--option-hover:#f1f7f4;--option-selected:#e9f5ef;--option-selected-text:#17674f;--control-radius:10px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--height-control:42px;--shadow-menu:0 12px 34px #14231a1c;--layer-modal:1400;--layer-dropdown:1600;--success:#1b805e;--warning:#b7791f;--error:#c64242}
+.logo{height:58px;width:58px;display:grid;place-items:center;background:transparent;color:white;border-radius:50%;font-size:42px;overflow:hidden}
+.logo img{width:100%;height:100%;object-fit:contain}

@@ -9,7 +9,10 @@
     "preview": "vite preview --host 0.0.0.0",
     "start": "node server.mjs",
     "test:qa": "playwright test --config qa/playwright.config.mjs",
-    "test:reporting": "node qa/reporting.test.mjs"
+    "test:reporting": "node qa/reporting.test.mjs",
+    "test:ui": "node qa/ui-release.mjs",
+    "release:gate": "python3 scripts/release-gate.py",
+    "release:verify": "python3 scripts/release-gate.py --verify"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
