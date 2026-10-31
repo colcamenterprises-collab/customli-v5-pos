@@ -55,6 +55,11 @@ db.prepare('INSERT INTO modifier_options(id,group_id,name) VALUES(?,?,?)').run(m
 let statusMap,bodyMap='';const resMap={writeHead(s){statusMap=s},end(v){bodyMap=v}};
 handleFoodModel(new URL('http://localhost/v5/api/food-model/modifier-costs'),'POST',resMap,db,owner,{optionId:missing,ingredientId:ing,quantity:-2});
 assert.equal(statusMap,200,'Owner can record negative modifier ingredient quantities for removals');
+const onlyModifierIngredient=randomUUID();db.prepare('INSERT INTO food_ingredients VALUES(?,?,?,?,?,?,?)').run(onlyModifierIngredient,'Bacon','g',1000,'g',15000,new Date().toISOString());
+db.prepare('INSERT INTO food_modifier_ingredients(option_id,ingredient_id,quantity) VALUES(?,?,?)').run(missing,onlyModifierIngredient,1);
+handleFoodModel(new URL('http://localhost/v5/api/food-model/ingredients/'+onlyModifierIngredient),'PATCH',resMap,db,owner,{name:'Bacon',packUnit:'each',packQuantity:1000,packCostMinor:15000});
+assert.equal(statusMap,409,'Unit family of modifier-only ingredient must not silently change');
+db.prepare('DELETE FROM food_modifier_ingredients WHERE ingredient_id=?').run(onlyModifierIngredient);
 const line3=randomUUID();
 db.prepare('INSERT INTO order_items VALUES(?,?,?,?,?,?)').run(line3,order,product.id,product.name,22000,1);
 db.prepare('INSERT INTO order_item_modifiers VALUES(?,?,?,?,?)').run(randomUUID(),line3,missing,'No onions',1);

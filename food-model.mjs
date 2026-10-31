@@ -102,7 +102,7 @@ export function handleFoodModel(url,method,res,db,user,body){
   if(other)fail(409,'An ingredient with that name already exists.');
   // A unit-family change must never silently reinterpret existing recipe quantities.
   const existing=method==='PATCH'?db.prepare('SELECT base_unit FROM food_ingredients WHERE id=?').get(id):null;
-  if(existing?.base_unit!==unit.base&&existing&&db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(id))fail(409,'Remove this ingredient from its recipes before changing its measurement unit.');
+  if(existing&&existing.base_unit!==unit.base&&(db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(id)||db.prepare('SELECT 1 FROM food_modifier_ingredients WHERE ingredient_id=? LIMIT 1').get(id)))fail(409,'Remove this ingredient from recipes and modifier mappings before changing its measurement unit.');
   const now=new Date().toISOString();
   if(method==='PATCH')db.prepare('UPDATE food_ingredients SET name=?,base_unit=?,pack_quantity=?,pack_unit=?,pack_cost_minor=?,updated_at=? WHERE id=?').run(name,unit.base,packQuantity,packUnit,packCost,now,id);
   else db.prepare('INSERT INTO food_ingredients VALUES(?,?,?,?,?,?,?)').run(id,name,unit.base,packQuantity,packUnit,packCost,now);
