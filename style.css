@@ -63,27 +63,3 @@
 .product .photo img{position:absolute;inset:0;width:100%;height:100%;max-height:168px;object-fit:contain;display:block}
 /* Delivery partner ticket capture */
 .channel-order-field,.channel-item-discount{display:flex;flex-direction:column;gap:5px;font-size:12px;color:#586c64;font-weight:600;margin:8px 0}.channel-order-field input,.channel-item-discount input{height:39px;border:1px solid #d9e5df;border-radius:9px;background:#fff;color:#243c33;padding:8px 11px;font-size:13px;min-width:0;width:100%}.channel-item-discount{max-width:170px;margin-left:auto}.channel-alert,.channel-ok{font-size:12px;border-radius:9px;padding:10px 12px;margin:9px 0}.channel-alert{background:#fff2eb;color:#a04525}.channel-ok{background:#e8f6f0;color:#0c7a5c}.channel-partner-payment{font-size:12px;color:#557568;padding:10px 12px;border:1px solid #e2e9e5;border-radius:9px;margin:9px 0}
-
-
-/* POS V5 – order routing uses configured partners, not unrelated channel/type/table controls. */
-.route-selector{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;padding:11px 16px 15px;border-bottom:1px solid #eff1f0}
-.route-segments{display:grid;grid-template-columns:1fr 1.22fr;gap:4px;background:#f2f5f4;padding:4px;border-radius:12px}
-.route-segments button{min-width:0;min-height:40px;border:0;border-radius:9px;background:transparent;color:#5f6966;font-size:12px;font-weight:600;white-space:nowrap;padding:0 6px}
-.route-segments button.active{background:#fff;color:#1b5e4d;box-shadow:0 1px 5px #182d2516}
-.route-segments button:disabled{opacity:.5;cursor:not-allowed}
-.route-selector .custom-select,.route-selector select,.route-selector .route-reference{width:100%;min-width:0;max-width:none}
-.route-selector .route-reference{min-height:40px;border:1px solid var(--control-border);border-radius:10px;padding:0 12px;background:#fff;color:var(--control-text);font-size:12px}
-.main .top:has(.tools):not(:has(h1)){justify-content:flex-end}
-/* Preserve complete receipt content while avoiding the forced 45vh internal scrollbar. */
-.receipt-detail{max-height:none;overflow:visible}
-.receipt:has(.receipt-detail){width:min(510px,calc(100vw - 24px));max-height:calc(100dvh - 20px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding:21px 25px}
-.receipt:has(.receipt-detail)::-webkit-scrollbar{display:none}
-.receipt:has(.receipt-detail) .receipt-detail{max-height:none;overflow:visible;margin:12px 0;padding:12px 0;gap:8px 16px;grid-template-columns:minmax(0,1fr) max-content}
-.receipt:has(.receipt-detail) .receipt-detail span{line-height:1.45;overflow-wrap:anywhere}
-.receipt:has(.receipt-detail) .receipt-detail strong{max-width:170px;overflow-wrap:anywhere}
-.receipt:has(.receipt-detail) .receipt-icon{height:44px;width:44px;font-size:25px;margin-bottom:9px}
-.receipt:has(.receipt-detail) h2{font-size:21px;margin:0 0 4px}
-.receipt:has(.receipt-detail) p{margin:0}
-.receipt:has(.receipt-detail) .receipt-actions{gap:8px;margin-top:12px}
-.receipt:has(.receipt-detail) .receipt-actions button{min-height:38px}
-@media(max-width:420px){.receipt:has(.receipt-detail){padding:18px 15px}.route-selector{padding:10px 12px}}
