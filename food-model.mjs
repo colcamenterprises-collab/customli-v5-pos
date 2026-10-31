@@ -52,6 +52,22 @@ export function handleFoodModel(url,method,res,db,user,body){
   const recipe=lookup(db,p[1]);if(!recipe)fail(404,'Recipe not found.');
   out(res,200,{recipe:costed(db,recipe)});return true;
  }
+ if(method==='GET'&&p.join('/')==='modifier-costs'){
+  const rows=db.prepare('SELECT m.option_id,m.ingredient_id,m.quantity,i.name AS ingredient_name,o.name AS option_name FROM food_modifier_ingredients m JOIN food_ingredients i ON i.id=m.ingredient_id JOIN modifier_options o ON o.id=m.option_id ORDER BY o.name,i.name').all();
+  out(res,200,{mappings:rows});return true;
+ }
+ if(method==='POST'&&p.join('/')==='modifier-costs'){
+  const optionId=String(body?.optionId||''),ingredientId=String(body?.ingredientId||''),amount=Number(body?.quantity);
+  if(!db.prepare('SELECT id FROM modifier_options WHERE id=?').get(optionId))fail(404,'Modifier option not found.');
+  if(!db.prepare('SELECT id FROM food_ingredients WHERE id=?').get(ingredientId))fail(404,'Ingredient not found.');
+  if(!Number.isFinite(amount)||!amount||Math.abs(amount)>100000)fail(400,'Enter a non-zero ingredient quantity.');
+  db.prepare('INSERT INTO food_modifier_ingredients(option_id,ingredient_id,quantity) VALUES(?,?,?) ON CONFLICT(option_id,ingredient_id) DO UPDATE SET quantity=excluded.quantity').run(optionId,ingredientId,amount);
+  audit(db,user,'modifier_option',optionId,'ingredient_cost_mapping_updated');out(res,200,{ok:true});return true;
+ }
+ if(method==='DELETE'&&p[0]==='modifier-costs'&&p.length===3){
+  db.prepare('DELETE FROM food_modifier_ingredients WHERE option_id=? AND ingredient_id=?').run(p[1],p[2]);
+  audit(db,user,'modifier_option',p[1],'ingredient_cost_mapping_removed');out(res,200,{ok:true});return true;
+ }
  if(method==='GET'&&p.join('/')==='menu-costing'){
   const recipes=db.prepare('SELECT * FROM food_recipes WHERE product_id IS NOT NULL').all().map(r=>costed(db,r));
   out(res,200,{linked_recipes:recipes});return true;
@@ -86,7 +102,7 @@ export function handleFoodModel(url,method,res,db,user,body){
   if(other)fail(409,'An ingredient with that name already exists.');
   // A unit-family change must never silently reinterpret existing recipe quantities.
   const existing=method==='PATCH'?db.prepare('SELECT base_unit FROM food_ingredients WHERE id=?').get(id):null;
-  if(existing?.base_unit!==unit.base&&existing&&db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(id))fail(409,'Remove this ingredient from its recipes before changing its measurement unit.');
+  if(existing&&existing.base_unit!==unit.base&&(db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(id)||db.prepare('SELECT 1 FROM food_modifier_ingredients WHERE ingredient_id=? LIMIT 1').get(id)))fail(409,'Remove this ingredient from recipes and modifier mappings before changing its measurement unit.');
   const now=new Date().toISOString();
   if(method==='PATCH')db.prepare('UPDATE food_ingredients SET name=?,base_unit=?,pack_quantity=?,pack_unit=?,pack_cost_minor=?,updated_at=? WHERE id=?').run(name,unit.base,packQuantity,packUnit,packCost,now,id);
   else db.prepare('INSERT INTO food_ingredients VALUES(?,?,?,?,?,?,?)').run(id,name,unit.base,packQuantity,packUnit,packCost,now);

@@ -30,8 +30,9 @@ assert.equal(invoke(handleShiftAnalytics,'/v5-test/api/shift-analytics?from=2026
 assert.equal(invoke(handleShiftAnalytics,'/v5-test/api/shift-analytics?from=2026-03-01&to=2026-03-01').data.shifts[0].id,newer);
 let detail=invoke(handleShiftAnalytics,'/v5-test/api/shift-analytics/detail?shiftId='+newer);
 assert.equal(detail.data.receipts.length,1);assert.equal(detail.data.shift.status,'balanced');assert.equal(detail.data.shift.net_sales,15000);assert.equal(detail.data.costs_available,false);
-assert.equal(invoke(handleShiftAnalytics,'/v5-test/api/shift-analytics', 'GET',null,manager).status,403);
-console.log('PASS shift overnight opening-date scope, recent closing, totals and Owner authorization');
+assert.equal(invoke(handleShiftAnalytics,'/v5-test/api/shift-analytics', 'GET',null,manager).status,200);
+assert.equal(invoke(handleShiftAnalytics,'/v5-test/api/shift-analytics', 'GET',null,{role:'Cashier'}).status,403);
+console.log('PASS shift overnight opening-date scope, recent closing, totals, Manager/Owner access and Cashier exclusion');
 const ingredient=invoke(handleFoodModel,'/v5-test/api/food-model/ingredients','POST',{name:'Fresh beef',packQuantity:1,packUnit:'kg',packCostMinor:30000});
 assert.equal(ingredient.status,200);const ingredientId=ingredient.data.ingredient.id;
 let recipe=invoke(handleFoodModel,'/v5-test/api/food-model/recipes','POST',{name:'Single patty',yieldQuantity:1,packagingCostMinor:1000,wastePercent:10,targetPriceMinor:19000,components:[{ingredientId,quantity:90}]});
