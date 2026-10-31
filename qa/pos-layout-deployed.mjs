@@ -17,7 +17,7 @@ try{
  if(candidate){const css=await readFile('style.css','utf8');await page.addInitScript(css=>{document.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent=css;document.head.append(style)})},css)}
  await page.goto('https://customli.io'+base);await page.locator('.login-card').waitFor();
  await page.locator('.logo img').evaluate(img=>img.decode());
- assert.match(await page.locator('.logo img').getAttribute('src'),/customli-symbol\\.svg$/,'Official Customli logo must be shown');
+ assert.match(await page.locator('.logo img').getAttribute('src'),/customli-symbol\.svg$/,'Official Customli logo must be shown');
  const verifyLogo=async()=>{const box=await page.locator('.logo').boundingBox(),image=await page.locator('.logo img').boundingBox();if(box){assert(image.width<=box.width+1&&image.height<=box.height+1,'Logo image escapes its container');assert(image.width<=58&&image.height<=58,'Logo exceeds approved 58px size')}};
  await verifyLogo();
  await page.evaluate(({token,test})=>sessionStorage.setItem(test?'v5_test_token':'v5_token',token),{token,test});await page.reload();
