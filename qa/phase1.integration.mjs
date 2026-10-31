@@ -8,7 +8,7 @@ const port=4445;
 const dirname=mkdtempSync(path.join(tmpdir(),'v5-phase1-'));
 const root='http://127.0.0.1:'+port+'/v5/api';
 const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url).pathname,
- env:{...process.env,PORT:String(port),V5_DATA_DIR:dirname,V5_BOOTSTRAP_PASSWORD:'temporary-qa-only-strong-passphrase'},
+ env:{...process.env,PORT:String(port),V5_DATA_DIR:dirname,V5_DEMO_SEED:'1',V5_BOOTSTRAP_PASSWORD:'temporary-qa-only-strong-passphrase'},
  stdio:['ignore','pipe','pipe']});
 let serverLog='';child.stderr.on('data',c=>serverLog+=c.toString());
 const wait=async()=>{for(let i=0;i<100;i++){if(child.exitCode!==null)throw Error('QA server exited: '+serverLog);try{const r=await fetch(root+'/health');if(r.ok||r.status===401)return}catch{}await new Promise(r=>setTimeout(r,60))}throw Error('QA server failed: '+serverLog)};

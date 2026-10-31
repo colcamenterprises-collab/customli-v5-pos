@@ -10,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 test('sale channels: setup, price snapshot, item and whole-ticket discount, receipts, reporting and shift cash',async t=>{
  const dir=mkdtempSync(path.join(tmpdir(),'v5-channel-')),port=44035,base='http://127.0.0.1:'+port+'/v5/api';
- const child=spawn(process.execPath,['--no-warnings','server.mjs'],{cwd:new URL('..',import.meta.url).pathname.replace(/\/qa\/$/,'/'),env:{...process.env,V5_DATA_DIR:dir,PORT:String(port),V5_KDS_ROUTING_ENABLED:'0',V5_BOOTSTRAP_PASSWORD:''},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['--no-warnings','server.mjs'],{cwd:new URL('..',import.meta.url).pathname.replace(/\/qa\/$/,'/'),env:{...process.env,V5_DATA_DIR:dir,PORT:String(port),V5_KDS_ROUTING_ENABLED:'0',V5_DEMO_SEED:'1',V5_BOOTSTRAP_PASSWORD:''},stdio:['ignore','pipe','pipe']});
  let output='';child.stderr.on('data',b=>output+=String(b).slice(0,500));
  t.after(()=>{child.kill('SIGTERM');rmSync(dir,{recursive:true,force:true})});
  let ready=false;for(let i=0;i<75;i++){try{const r=await fetch(base+'/health');if(r.status===401){ready=true;break}}catch{}await delay(80)}assert.ok(ready,'API failed to start '+output.slice(0,300));
