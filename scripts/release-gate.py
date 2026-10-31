@@ -27,7 +27,7 @@ with open(ROOT/'.git/v5-release-gate.lock','w') as lock:
  run('npm','run','build');run('node','node_modules/vite/bin/vite.js','build','--base=/v5-test/','--outDir','test-dist',env={**os.environ,'VITE_API_BASE':'/v5-test/api'})
  tested=state()
  if any(started[k]!=tested[k] for k in ['commit','source']):sys.exit('BLOCKED: source changed during build.')
- for test in ['qa/onboarding.test.mjs','qa/onboarding.http.test.mjs','qa/expenses.test.mjs','qa/expenses.http.test.mjs','qa/phase1.integration.mjs','qa/print-studio.test.mjs','qa/print-contracts.test.mjs','qa/sales-channels.test.mjs'] :run('node',test)
+ for test in ['qa/menu-costs.test.mjs','qa/shift-food.test.mjs','qa/onboarding.test.mjs','qa/onboarding.http.test.mjs','qa/expenses.test.mjs','qa/expenses.http.test.mjs','qa/phase1.integration.mjs','qa/print-studio.test.mjs','qa/print-contracts.test.mjs','qa/sales-channels.test.mjs'] :run('node',test)
  run('node','qa/discount-rules.e2e.mjs')
  for dist,base in [('dist','/v5/'),('test-dist','/v5-test/')]:run('node','qa/ui-release.mjs',env={**os.environ,'UI_DIST':dist,'UI_BASE':base,'ALLOW_VISUAL_BASELINE_UPDATE':''})
  if state()!=tested:sys.exit('BLOCKED: source or built artifacts changed while tests were running.')

@@ -1,4 +1,5 @@
-// V5 shift analytics — read-only owner reconciliation, no transaction mutations.
+// V5 shift analytics — Manager/Owner reconciliation, no transaction mutations.
+import {shiftCostSummary} from './sales-costs.mjs';
 const json=(res,status,body)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(body));};
 const num=v=>Number(v||0);
 const dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''))&&!Number.isNaN(Date.parse(v+'T00:00:00Z'));
@@ -13,12 +14,12 @@ const summary=(db,shift)=>{
  const moneyIn=movements.find(x=>x.direction==='in')?.amount||0,moneyOut=movements.find(x=>x.direction==='out')?.amount||0;
  const expectedCash=num(shift.opening_cash)+(tenders.Cash?.net||0)+num(moneyIn)-num(moneyOut);
  const variance=shift.closing_cash==null?null:num(shift.closing_cash)-expectedCash;
- return {...shift,gross_sales:gross,discounts,refunds,net_sales:net,order_count:o.reduce((a,x)=>a+x.receipts,0),tenders,money_in:num(moneyIn),money_out:num(moneyOut),expected_cash:expectedCash,variance,status:shift.closed_at==null?'open':variance===0?'balanced':'difference',profitability_available:false};
+ return {...shift,gross_sales:gross,discounts,refunds,net_sales:net,order_count:o.reduce((a,x)=>a+x.receipts,0),tenders,money_in:num(moneyIn),money_out:num(moneyOut),expected_cash:expectedCash,variance,status:shift.closed_at==null?'open':variance===0?'balanced':'difference',...shiftCostSummary(db,shift.id),profitability_available:false};
 };
 export function handleShiftAnalytics(url,method,res,db,user){
  const p=url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');
  if(!p.startsWith('/shift-analytics'))return false;
- if(user.role!=='Owner'){json(res,403,{message:'Owner access is required.'});return true;}
+ if(!['Owner','Manager'].includes(user.role)){json(res,403,{message:'Manager or Owner access is required.'});return true;}
  if(method!=='GET'){json(res,405,{message:'Shift reports are read-only.'});return true;}
  try{
   if(p==='/shift-analytics'){
@@ -38,7 +39,7 @@ export function handleShiftAnalytics(url,method,res,db,user){
    const movements=db.prepare("SELECT direction,amount,description,place,recorded_by,created_at FROM shift_cash_movements WHERE shift_id=? ORDER BY created_at").all(id);
    const adjustments=db.prepare("SELECT r.created_at,r.amount,r.quantity,r.reason,r.payment_method,o.receipt_number,oi.name AS item_name FROM refunds r JOIN orders o ON r.order_id=o.id JOIN order_items oi ON oi.id=r.item_id WHERE o.shift_id=? ORDER BY r.created_at").all(id);
    const items=db.prepare("SELECT oi.name, sum(oi.quantity) quantity, sum(oi.quantity*oi.price) gross_sales FROM order_items oi JOIN orders o ON oi.order_id=o.id WHERE o.shift_id=? AND o.status IN ('paid','refunded') GROUP BY oi.name ORDER BY quantity DESC,oi.name").all(id);
-   json(res,200,{timezone:'Asia/Bangkok',shift,receipts,movements,refunds:adjustments,items,costs_available:false,note:'Profit cannot be calculated until ingredient and operating expenses are recorded.'});return true;
+   json(res,200,{timezone:'Asia/Bangkok',shift,receipts,movements,refunds:adjustments,items,costs_available:shift.costs_available,cogs_minor:shift.cogs_minor,gross_margin_minor:shift.costs_available?shift.net_sales-shift.cogs_minor:null,note:shift.costs_available?'Gross margin excludes operating expenses. Refunded food remains consumed unless stock is separately returned.':'Incomplete recipe or modifier costing; gross margin is not available.'});return true;
   }
   json(res,404,{message:'Shift report not found.'});return true;
  }catch(e){json(res,500,{message:'Shift report could not be loaded.'});return true;}

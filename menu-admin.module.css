@@ -1,0 +1,15 @@
+.categoryImage{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:9px;background:#e9f3f0;font-size:23px;overflow:hidden}
+.categoryImage img{width:100%;height:100%;object-fit:cover}
+.itemName{border:none;background:transparent;text-align:left;cursor:pointer;color:inherit;font:inherit;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.itemName:hover{text-decoration:underline}
+.itemName:focus-visible{outline:2px solid #0ca889;outline-offset:3px;border-radius:5px}
+.archiveIcon{display:grid;place-items:center;flex:none;width:30px;height:30px;border:1px solid #f0dfdf;border-radius:8px;color:#ac4a4a;background:#fff;cursor:pointer}
+.archiveIcon:hover{background:#fff1f1}
+.iconLibrary{display:flex;flex-wrap:wrap;gap:8px;max-height:160px;overflow-y:auto;padding:6px}
+.iconLibrary fieldset{border:1px solid #dde7e5;border-radius:9px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;padding:5px}
+.iconLibrary legend{font-size:11px}
+.iconChoice{display:inline-flex;cursor:pointer;padding:2px!important;gap:0!important}
+.iconChoice input{position:absolute;opacity:0;width:1px;height:1px}
+.iconChoice span{font-size:21px;padding:4px;border-radius:7px}
+.iconChoice input:checked+span{background:#d6f7ec;outline:2px solid #12a981}
+.modifierSummary{background:#f5f9f7;padding:9px;border-radius:10px;display:grid;gap:5px;font-size:12px}
