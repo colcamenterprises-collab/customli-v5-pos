@@ -92,8 +92,8 @@ export function handleShiftAnalytics(url,method,res,db,user,b={}){
    for(const line of lines){let o=byOrder.get(line.order_id);if(!o){o={discount:Number(line.discount_total||0),gross:0,lines:[]};byOrder.set(line.order_id,o);}const gross=Number(line.price||0)*Number(line.quantity||0);o.gross+=gross;o.lines.push({...line,gross});}
    const grouped={items:new Map(),channels:new Map()};
    for(const order of byOrder.values())for(const line of order.lines){
-    const allocation=order.gross?Math.round(order.discount*line.gross/order.gross):0;
-    const revenue=Math.max(0,line.gross-allocation-Number(line.refund_amount||0));
+    const lineDiscount=Number(line.discount_amount||0);
+    const revenue=Math.max(0,line.gross-lineDiscount-Number(line.refund_amount||0));
     const cogs=line.cost_complete===1?Number(line.total_cost_minor||0):null;
     const channel=channels.get(line.channel_id)||'Direct';
     for(const [map,key] of [[grouped.items,line.name||'Unnamed item'],[grouped.channels,channel]]){
