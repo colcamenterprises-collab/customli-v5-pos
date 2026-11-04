@@ -15,3 +15,6 @@
 .modifierSummary{background:#f5f9f7;padding:9px;border-radius:10px;display:grid;gap:5px;font-size:12px}
 .saleCategoryThumb{overflow:hidden;display:inline-grid;place-items:center;max-width:32px;max-height:32px}
 .saleCategoryThumb img{display:block;width:28px;height:28px;max-width:100%;max-height:100%;object-fit:cover;border-radius:6px}
+
+.saleCategoryThumb{max-width:16px;max-height:16px}
+.saleCategoryThumb img{width:14px;height:14px}
