@@ -68,3 +68,5 @@
 .category-icon{font-size:21px!important;line-height:1}
 .product .photo img{width:70%!important;height:70%!important;inset:15%!important;max-height:none!important;object-fit:contain!important}
 .product .photo>span{font-size:70%}
+
+.shift-receipt-capture{display:flex;flex-direction:column;gap:5px;font-size:12px}.shift-receipt-capture input{max-width:185px;font-size:11px}.shift-receipt-capture span{color:#187c66;font-size:11px}
