@@ -70,3 +70,8 @@
 .product .photo>span{font-size:70%}
 
 .shift-receipt-capture{display:flex;flex-direction:column;gap:5px;font-size:12px}.shift-receipt-capture input{max-width:185px;font-size:11px}.shift-receipt-capture span{color:#187c66;font-size:11px}
+/* Compact equal-sided category tiles for tablet POS. Keep touch targets >= 88px. */
+.categories{gap:10px;padding-bottom:12px;align-items:flex-start}
+.category{flex:0 0 100px!important;width:100px!important;height:100px!important;min-height:100px!important;max-height:100px!important;aspect-ratio:1/1;gap:7px!important;padding:8px 5px!important;border-radius:16px!important;justify-content:center!important;font-size:12px!important;line-height:1.2;text-align:center;white-space:normal}
+.category-icon{font-size:21px!important;line-height:1!important;flex-shrink:0}
+@media(max-width:600px){.category{flex-basis:92px!important;width:92px!important;height:92px!important;min-height:92px!important;max-height:92px!important}}
