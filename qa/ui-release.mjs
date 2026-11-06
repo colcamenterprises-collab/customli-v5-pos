@@ -7,13 +7,15 @@ import path from 'node:path';
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import assert from 'node:assert/strict';
+import {startPlatformAuthFixture} from './platform-auth-fixture.mjs';
 const root=process.cwd(), dist=path.resolve(process.env.UI_DIST||'dist'), base=process.env.UI_BASE||'/v5/', update=process.argv.includes('--update-baselines');
 if(update && process.env.ALLOW_VISUAL_BASELINE_UPDATE!=='reviewed') throw Error('Baseline replacement requires ALLOW_VISUAL_BASELINE_UPDATE=reviewed and a reviewed baseline diff.');
 const refs=path.join(root,'qa/visual-baselines'),output=path.join(root,'qa/release-results',base.includes('test')?'test':'production');mkdirSync(output,{recursive:true});
-const data=mkdtempSync(path.join(tmpdir(),'v5-ui-gate-')),password='isolated-ui-release-test';
+const data=mkdtempSync(path.join(tmpdir(),'v5-ui-gate-')),password='isolated-ui-release-test',fixture=await startPlatformAuthFixture();
 const portServer=http.createServer();await new Promise(r=>portServer.listen(0,'127.0.0.1',r));const apiPort=portServer.address().port;await new Promise(r=>portServer.close(r));
-const api=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:String(apiPort),V5_DATA_DIR:data,V5_BOOTSTRAP_PASSWORD:password,V5_DEMO_SEED:'1',V5_API_PREFIX:base+'api',V5_PRINT_KDS_DB:''},stdio:['ignore','pipe','pipe']});let apiLog='';api.stderr.on('data',c=>apiLog+=c);
+const api=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:String(apiPort),V5_DATA_DIR:data,V5_BOOTSTRAP_PASSWORD:password,V5_DEMO_SEED:'1',V5_API_PREFIX:base+'api',V5_PRINT_KDS_DB:'',PLATFORM_AUTH_INTROSPECT_URL:fixture.url+'/introspect',PLATFORM_AUTH_SERVICE_SECRET:fixture.secret,PLATFORM_TENANT_ID:fixture.tenantId},stdio:['ignore','pipe','pipe']});let apiLog='';api.stderr.on('data',c=>apiLog+=c);
 const web=http.createServer(async(req,res)=>{try{
+ if(req.url.startsWith('/v5-auth/api/auth/')||req.url.startsWith('/v5-auth-test/api/auth/')){const prefix=req.url.startsWith('/v5-auth-test/')?'/v5-auth-test/api/auth':'/v5-auth/api/auth',chunks=[];for await(const c of req)chunks.push(c);const r=await fetch(fixture.url+req.url.slice(prefix.length),{method:req.method,headers:{'Content-Type':req.headers['content-type']||'application/json'},body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});res.writeHead(r.status,{'Content-Type':'application/json'});res.end(await r.text());return}
  if(req.url.startsWith(base+'api/')){const chunks=[];for await(const c of req)chunks.push(c);const headers={...req.headers};delete headers.host;delete headers.origin;const r=await fetch('http://127.0.0.1:'+apiPort+req.url,{method:req.method,headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Buffer.concat(chunks)})});res.writeHead(r.status,{'Content-Type':r.headers.get('content-type')||'application/json'});res.end(Buffer.from(await r.arrayBuffer()));return}
  const relative=decodeURIComponent(req.url.split('?')[0]).slice(base.length);const file=path.resolve(dist,relative||'index.html');if(!file.startsWith(dist+path.sep)){res.writeHead(403);res.end();return}if(!existsSync(file)){res.writeHead(404);res.end();return}res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':file.endsWith('.svg')?'image/svg+xml':'text/html');res.end(readFileSync(file));
 }catch(e){res.writeHead(500);res.end(e.message)}});
@@ -42,7 +44,7 @@ try{
   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--control-border').trim()),'#dfe5e4','Shared design tokens missing');
  };
  await page.goto(origin+base);await page.locator('.login-card').waitFor();await bounds();await snapshot('login-desktop');
- await page.getByLabel('Username').fill('manager');await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('button',{name:'Add to cart',exact:true}).first().waitFor();
+ await page.getByLabel('Email').fill(fixture.email);await page.getByLabel('Password',{exact:true}).fill(fixture.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('button',{name:'Add to cart',exact:true}).first().waitFor();
  for(const [name,width,height] of [['desktop',1440,900],['tablet',1024,768],['portrait',820,1180],['mobile',390,844]]){await page.setViewportSize({width,height});await bounds();await snapshot('menu-'+name)}
  await page.setViewportSize({width:1440,height:900});await page.getByRole('combobox',{name:'Payment method',exact:true}).click();await page.getByRole('listbox').waitFor();await snapshot('payment-dropdown');await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();await page.locator('.line').waitFor();await snapshot('populated-cart');
@@ -50,4 +52,4 @@ try{
  // Generated bill date/reference are separately tested by backend tests; hide only the image pixels.
  await page.getByAltText('Unpaid bill preview').evaluate(e=>e.style.visibility='hidden');await snapshot('payment-request-modal');
  assert.deepEqual(errors,[]);console.log(JSON.stringify({status:'PASS',base,snapshots:8,isolatedDatabase:true,hardwareValidated:false}));
-}finally{await browser?.close();await new Promise(r=>web.close(r));if(api.exitCode===null){api.kill();await new Promise(r=>api.once('exit',r))}rmSync(data,{recursive:true,force:true})}
+}finally{await browser?.close();await new Promise(r=>web.close(r));if(api.exitCode===null){api.kill();await new Promise(r=>api.once('exit',r))}await fixture.close();rmSync(data,{recursive:true,force:true})}

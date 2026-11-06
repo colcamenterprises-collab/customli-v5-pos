@@ -5,12 +5,14 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
+import {startPlatformAuthFixture} from './platform-auth-fixture.mjs';
 import {chromium} from 'playwright';
-const cwd=process.cwd(),data=mkdtempSync(path.join(tmpdir(),'v5-native-bt-')),password='v5-native-qa-password';
+const cwd=process.cwd(),data=mkdtempSync(path.join(tmpdir(),'v5-native-bt-')),password='v5-native-qa-password',fixture=await startPlatformAuthFixture();
 const portServer=http.createServer();await new Promise(ok=>portServer.listen(0,'127.0.0.1',ok));const port=portServer.address().port;await new Promise(ok=>portServer.close(ok));
-const api=spawn(process.execPath,['server.mjs'],{cwd,env:{...process.env,PORT:String(port),V5_API_PREFIX:'/v5/api',V5_DATA_DIR:data,V5_BOOTSTRAP_PASSWORD:password,V5_DEMO_SEED:'1',V5_PRINT_KDS_DB:''},stdio:'ignore'});
+const api=spawn(process.execPath,['server.mjs'],{cwd,env:{...process.env,PORT:String(port),V5_API_PREFIX:'/v5/api',V5_DATA_DIR:data,V5_BOOTSTRAP_PASSWORD:password,V5_DEMO_SEED:'1',V5_PRINT_KDS_DB:'',PLATFORM_AUTH_INTROSPECT_URL:fixture.url+'/introspect',PLATFORM_AUTH_SERVICE_SECRET:fixture.secret,PLATFORM_TENANT_ID:fixture.tenantId},stdio:'ignore'});
 const app=http.createServer(async(req,res)=>{
  try{
+  if(req.url.startsWith('/v5-auth/api/auth/')){const chunks=[];for await(const c of req)chunks.push(c);const response=await fetch(fixture.url+req.url.slice('/v5-auth/api/auth'.length),{method:req.method,headers:{'Content-Type':req.headers['content-type']||'application/json'},body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});res.writeHead(response.status,{'Content-Type':'application/json'});res.end(await response.text());return;}
   if(req.url.startsWith('/v5/api/')){const chunks=[];for await(const c of req)chunks.push(c);const response=await fetch('http://127.0.0.1:'+port+req.url,{method:req.method,headers:{...Object.fromEntries(Object.entries(req.headers).filter(([key])=>!['host','origin'].includes(key)))},body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});res.writeHead(response.status,Object.fromEntries([...response.headers].filter(([k])=>!['content-encoding','transfer-encoding'].includes(k))));res.end(Buffer.from(await response.arrayBuffer()));return;}
   const rel=decodeURIComponent(req.url.split('?')[0]).replace(/^\/v5\//,'')||'index.html',file=path.resolve('dist',rel);if(!file.startsWith(path.resolve('dist')+path.sep)||!existsSync(file)){res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html');res.end(readFileSync(file));
@@ -34,7 +36,7 @@ try{
   }}};
  });
  const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base);await page.getByLabel('Username').fill('manager');await page.getByLabel('Password',{exact:true}).fill(password);
+ await page.goto(base);await page.getByLabel('Email').fill(fixture.email);await page.getByLabel('Password',{exact:true}).fill(fixture.password);
  await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('button',{name:'Bluetooth printer'}).waitFor({timeout:10000});
  await page.getByRole('button',{name:'Bluetooth printer'}).click();
  const dialog=page.getByRole('dialog',{name:'Bluetooth printer'});await dialog.waitFor();
@@ -50,5 +52,5 @@ try{
  assert.deepEqual(errors,[]);
  console.log('PASS Android mocked UI: find → select → connect & save → test → release socket; 390px responsive, no page errors');
 }finally{
- await browser?.close();await new Promise(ok=>app.close(ok));api.kill();await new Promise(ok=>api.once('exit',ok));rmSync(data,{recursive:true,force:true});
+ await browser?.close();await new Promise(ok=>app.close(ok));api.kill();await new Promise(ok=>api.once('exit',ok));await fixture.close();rmSync(data,{recursive:true,force:true});
 }
