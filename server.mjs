@@ -17,7 +17,7 @@ const cookieSession=req=>{
  const raw=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(SSO_COOKIE+'='));
  return raw?raw.slice(SSO_COOKIE.length+1):'';
 };
-const bearerSession=req=>{const v=req.headers.authorization||'';return /^Bearer [a-f0-9]{64}$/i.test(v)?v.slice(7):''};
+const bearerSession=req=>{const v=req.headers.authorization||'';return /^Bearer [A-Za-z0-9_-]{40,100}$/.test(v)?v.slice(7):''};
 const sessionFor=req=>{
  const token=bearerSession(req);
  if(token){
