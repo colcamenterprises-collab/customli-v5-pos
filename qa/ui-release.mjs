@@ -43,13 +43,12 @@ try{
   const logo=page.locator('.logo');if(await logo.isVisible()){const outer=await logo.boundingBox(),inner=await logo.locator('img').boundingBox();assert(inner.width<=58&&inner.height<=58&&inner.width<=outer.width+1&&inner.height<=outer.height+1,'Logo escapes its approved bounds')}
   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--control-border').trim()),'#dfe5e4','Shared design tokens missing');
  };
- await page.goto(origin+base);await page.locator('.login-card').waitFor();await bounds();await snapshot('login-desktop');
- await page.getByLabel('Email').fill(fixture.email);await page.getByLabel('Password',{exact:true}).fill(fixture.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('button',{name:'Add to cart',exact:true}).first().waitFor();
+ await page.addInitScript(token=>sessionStorage.setItem('customli-platform-session',token),fixture.token);await page.goto(origin+base);await page.getByRole('button',{name:'Add to cart',exact:true}).first().waitFor();
  for(const [name,width,height] of [['desktop',1440,900],['tablet',1024,768],['portrait',820,1180],['mobile',390,844]]){await page.setViewportSize({width,height});await bounds();await snapshot('menu-'+name)}
  await page.setViewportSize({width:1440,height:900});await page.getByRole('combobox',{name:'Payment method',exact:true}).click();await page.getByRole('listbox').waitFor();await snapshot('payment-dropdown');await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();await page.locator('.line').waitFor();await snapshot('populated-cart');
  await page.getByRole('button',{name:'Payment request',exact:true}).click();await page.getByAltText('Unpaid bill preview').waitFor();
  // Generated bill date/reference are separately tested by backend tests; hide only the image pixels.
  await page.getByAltText('Unpaid bill preview').evaluate(e=>e.style.visibility='hidden');await snapshot('payment-request-modal');
- assert.deepEqual(errors,[]);console.log(JSON.stringify({status:'PASS',base,snapshots:8,isolatedDatabase:true,hardwareValidated:false}));
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({status:'PASS',base,snapshots:7,isolatedDatabase:true,hardwareValidated:false}));
 }finally{await browser?.close();await new Promise(r=>web.close(r));if(api.exitCode===null){api.kill();await new Promise(r=>api.once('exit',r))}await fixture.close();rmSync(data,{recursive:true,force:true})}

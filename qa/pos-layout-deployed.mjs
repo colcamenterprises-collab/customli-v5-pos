@@ -1,39 +1,27 @@
-// Read-only browser regression for the oversized branding image reported on Android.
-import {DatabaseSync} from 'node:sqlite';
-import {randomBytes,createHash} from 'node:crypto';
-import {mkdir,readFile} from 'node:fs/promises';
-import {chromium} from 'playwright';
+// Deployed browser check: the Dashboard is the sole login and password-recovery entry point.
 import assert from 'node:assert/strict';
-const test=process.argv.includes('test'),candidate=process.argv.includes('--candidate');
-const base=test?'/v5-test/':'/v5/',db=new DatabaseSync(test?'/var/lib/customli-v5-test/pos.sqlite':'/var/lib/customli-v5/pos.sqlite');
-const token=randomBytes(32).toString('hex'),hash=createHash('sha256').update(token).digest('hex');
-const owner=db.prepare("SELECT id FROM users WHERE role='Owner' AND active=1 LIMIT 1").get();
+import {chromium} from 'playwright';
+const test=process.argv.includes('test'),base=test?'/v5-test/':'/v5/',dashboard=test?'/v5-dashboard-test/':'/v5-dashboard/';
 let browser;
-const output='qa/print-results/pos-layout';await mkdir(output,{recursive:true});
 try{
- db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').run(hash,owner.id,new Date(Date.now()+180000).toISOString());
- browser=await chromium.launch({headless:true,args:['--no-sandbox']});
- const context=await browser.newContext();const errors=[];const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
- if(candidate){const css=await readFile('style.css','utf8');await page.addInitScript(css=>{document.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent=css;document.head.append(style)})},css)}
- await page.goto('https://customli.io'+base);await page.locator('.login-card').waitFor();
- await page.locator('.logo img').evaluate(img=>img.decode());
- assert.match(await page.locator('.logo img').getAttribute('src'),/customli-symbol\.svg$/,'Official Customli logo must be shown');
- const verifyLogo=async()=>{const box=await page.locator('.logo').boundingBox(),image=await page.locator('.logo img').boundingBox();if(box){assert(image.width<=box.width+1&&image.height<=box.height+1,'Logo image escapes its container');assert(image.width<=58&&image.height<=58,'Logo exceeds approved 58px size')}};
- await verifyLogo();
- await page.evaluate(({token,test})=>sessionStorage.setItem(test?'v5_test_token':'v5_token',token),{token,test});await page.reload();
- await page.getByRole('button',{name:'Add to cart',exact:true}).first().waitFor();
+ browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+ const page=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('https://customli.io'+base,{waitUntil:'networkidle'});
+ await page.waitForURL('**'+dashboard,{timeout:15000});
+ await page.getByRole('heading',{name:'Sign in',exact:true}).waitFor();
+ await page.locator('.auth-logo img').evaluate(img=>img.decode());
+ assert.match(await page.locator('.auth-logo img').getAttribute('src'),/customli-login-logo\.svg$/,'Official login logo is required');
+ assert.equal(await page.getByLabel(/Email/).count(),1);assert.equal(await page.locator('input[type=\"password\"]').count(),1);
+ assert.equal(await page.getByRole('button',{name:'Show password'}).count(),1);
+ assert.equal(await page.getByRole('button',{name:'Forgot password?'}).count(),1);
+ assert.equal(await page.getByRole('button').filter({hasText:/Google|Apple/}).count(),0);
  for(const [width,height] of [[1536,724],[1280,720],[1024,768],[820,1180],[390,844]]){
-  await page.setViewportSize({width,height});await page.locator('.logo img').evaluate(img=>img.decode());await verifyLogo();
-  assert(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--control-border').trim()==='#dfe5e4'),'Shared control design tokens missing');
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Horizontal page overflow');
-  await page.screenshot({path:output+'/'+(test?'test':'production')+'-'+width+(candidate?'-candidate':'')+'.png'});
+  await page.setViewportSize({width,height});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Horizontal overflow at '+width);
+  await page.screenshot({path:'/tmp/v5-dashboard-login-'+width+'.png'});
  }
- await page.setViewportSize({width:1536,height:724});
- assert.equal(await page.getByRole('button',{name:'Direct',exact:true}).getAttribute('aria-pressed'),'true');
- await page.getByRole('combobox',{name:'Direct order type',exact:true}).click();await page.getByRole('listbox').waitFor();
- assert.equal(await page.getByRole('option',{name:'Takeaway',exact:true}).count(),1);
- assert.equal(await page.getByRole('option',{name:'Dine In',exact:true}).count(),1);
- assert.equal(await page.getByRole('listbox').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 255, 255)');
- await page.keyboard.press('Escape');assert.deepEqual(errors,[]);
- console.log(JSON.stringify({environment:test?'test':'production',candidate,passed:'Login and POS logo containment, shared control styles, direct order dropdown, five viewport sizes, no page errors',hardwareValidated:false}));
-}finally{await browser?.close();db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash);db.close()}
+ await page.getByRole('button',{name:'Forgot password?'}).click();
+ await page.getByRole('heading',{name:'Reset Password',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Send code'}).count(),1);
+ assert.deepEqual(errors,[]);
+ console.log(JSON.stringify({environment:test?'test':'production',passed:'POS redirects to Dashboard login; logo, email, password visibility, recovery entry and five responsive viewports verified',hardwareValidated:false}));
+}finally{await browser?.close()}

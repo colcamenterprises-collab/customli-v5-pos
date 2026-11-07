@@ -24,7 +24,7 @@ try{
  const db=new DatabaseSync(path.join(data,'pos.sqlite'));db.prepare("UPDATE users SET role='Owner' WHERE username='manager'").run();db.close();
  await new Promise(ok=>app.listen(0,'127.0.0.1',ok));const base='http://127.0.0.1:'+app.address().port+'/v5/';
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});const ctx=await browser.newContext({viewport:{width:1024,height:768}});
- await ctx.addInitScript(()=>{
+ await ctx.addInitScript(token=>{sessionStorage.setItem('customli-platform-session',token);
   const calls=[];window.__bluetoothCalls=calls;
   window.Capacitor={isNativePlatform:()=>true,Plugins:{ThermalPrinter:{
     scanPrinters:async()=>({printers:[{name:'Printer ABC',address:'AA:BB:CC:DD:EE:FF',bonded:true}]}),
@@ -34,10 +34,9 @@ try{
     printTest:async()=>{calls.push('test');return {ok:true}},
     printRaw:async()=>({ok:true})
   }}};
- });
+ },fixture.token);
  const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base);await page.getByLabel('Email').fill(fixture.email);await page.getByLabel('Password',{exact:true}).fill(fixture.password);
- await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('button',{name:'Bluetooth printer'}).waitFor({timeout:10000});
+ await page.goto(base);await page.getByRole('button',{name:'Bluetooth printer'}).waitFor({timeout:10000});
  await page.getByRole('button',{name:'Bluetooth printer'}).click();
  const dialog=page.getByRole('dialog',{name:'Bluetooth printer'});await dialog.waitFor();
  await dialog.getByText('Printer ABC').first().waitFor();
