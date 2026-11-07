@@ -3,17 +3,27 @@ export const purposes=['customer','payment','kitchen','packing','delivery','summ
 export const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 export const hash=x=>createHash('sha256').update(typeof x==='string'?x:JSON.stringify(x)).digest('hex');
 export const now=()=>new Date().toISOString();
-export function defaults(purpose){return {name:purpose.replaceAll('_',' '),purpose,width:purpose.endsWith('label')?100:80,height:purpose.endsWith('label')?50:0,fontSize:purpose.endsWith('label')?12:16,businessName:'',address:'',phone:'',taxId:'',header:'',footer:'',logoAsset:'',logoPosition:'center',showModifiers:true,checkboxes:purpose==='packing',componentBoxes:purpose==='packing',signoff:purpose==='packing',checker:false,showTime:true,timezone:'Asia/Bangkok',marketingUrl:'',marketingCaption:'',qrSize:'medium',qrChannels:[],campaignStart:'',campaignEnd:'',paymentAsset:'',packageQr:false};}
+export function defaults(purpose){return {name:purpose.replaceAll('_',' '),purpose,width:purpose.endsWith('label')?100:80,height:purpose.endsWith('label')?50:0,fontSize:purpose.endsWith('label')?12:16,stylePreset:'editorial',logoSize:'small',showOrderType:true,showInternalReceiptNumber:true,showPayment:true,showCashDetails:true,businessName:'',address:'',phone:'',taxId:'',header:'',footer:'',logoAsset:'',logoPosition:'center',showModifiers:true,checkboxes:purpose==='packing',componentBoxes:purpose==='packing',signoff:purpose==='packing',checker:false,showTime:true,timezone:'Asia/Bangkok',marketingUrl:'',marketingCaption:'',qrSize:'medium',qrChannels:[],campaignStart:'',campaignEnd:'',paymentAsset:'',packageQr:false};}
+export function normalizeMarketingUrl(value){
+ const raw=String(value??'').trim();if(!raw)return '';
+ const candidate=/^[a-z][a-z\d+.-]*:/i.test(raw)?raw:'https://'+raw;
+ let url;try{url=new URL(candidate)}catch{fail(400,'Enter a valid website address, such as example.com.');}
+ if(url.protocol!=='https:'||url.username||url.password||!url.hostname.includes('.')||url.hostname==='localhost')fail(400,'Use a public HTTPS website address, such as https://example.com.');
+ return url.toString();
+}
 export function validateTemplate(t){
  if(!purposes.includes(t.purpose))fail(400,'Choose a template purpose.');
  const out=defaults(t.purpose);
  for(const k of ['name','businessName','address','phone','taxId','header','footer','marketingUrl','marketingCaption','logoAsset','paymentAsset','timezone','logoPosition','campaignStart','campaignEnd']){out[k]=String(t[k]??out[k]).trim();if(out[k].length>(['header','footer','address'].includes(k)?500:250))fail(400,'Shorten '+k+'.');if(/[\x00-\x08\x0b-\x1f]/.test(out[k]))fail(400,'Remove control characters.');}
  try{new Intl.DateTimeFormat('en',{timeZone:out.timezone})}catch{fail(400,'Choose a valid time zone.');}
- for(const k of ['showModifiers','checkboxes','componentBoxes','signoff','checker','showTime','packageQr'])out[k]=Boolean(t[k]??out[k]);
+ out.stylePreset=['promotional','minimalist','editorial'].includes(t.stylePreset)?t.stylePreset:'editorial';
+ out.logoSize=['small','medium','large'].includes(t.logoSize)?t.logoSize:'small';
+ out.marketingUrl=normalizeMarketingUrl(out.marketingUrl);
+ for(const k of ['showOrderType','showInternalReceiptNumber','showPayment','showCashDetails','showModifiers','checkboxes','componentBoxes','signoff','checker','showTime','packageQr'])out[k]=Boolean(t[k]??out[k]);
  out.width=Number(t.width);out.height=Number(t.height||0);out.fontSize=Number(t.fontSize||out.fontSize);
  if(!Number.isFinite(out.fontSize)||!Number.isInteger(out.width)||!Number.isInteger(out.height)||out.width<30||out.width>110||out.height<0||out.height>200||out.fontSize<10||out.fontSize>24)fail(400,'Check paper dimensions and text size.');
  if(t.purpose.endsWith('label')?out.height<20:![58,80].includes(out.width))fail(400,'Select supported paper dimensions.');
- if(out.marketingUrl){let u;try{u=new URL(out.marketingUrl)}catch{fail(400,'Enter a complete HTTPS marketing link.');}if(u.protocol!=='https:'||u.username||u.password)fail(400,'Use a public HTTPS marketing link.');}
+ 
  if(!['left','center','right'].includes(out.logoPosition))fail(400,'Choose a logo position.');
  out.qrSize=['small','medium','large'].includes(t.qrSize)?t.qrSize:'medium';out.qrChannels=Array.isArray(t.qrChannels)?t.qrChannels.map(String).slice(0,40):[];
  for(const k of ['campaignStart','campaignEnd'])if(out[k]&&!Number.isFinite(Date.parse(out[k])))fail(400,'Check campaign dates.');
