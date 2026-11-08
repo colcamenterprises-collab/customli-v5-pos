@@ -32,7 +32,7 @@ export function customerDisplay({db,bad,priceOrderLine,channelFor,priceFor,getOr
    if(channel.kind==='partner'){discount=Number(b.partnerDiscountMinor||0);if(!Number.isSafeInteger(discount)||discount<0||discount>subtotal)bad(400,'Check the delivery discount');}
    snapshot={...snapshot,items,subtotal,discount,total:subtotal-discount,state:'order'};
   }
-  db.prepare(`INSERT INTO customer_displays(pos_device_id,location_id,revision,payload,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(pos_device_id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.revision>customer_displays.revision`).run(d.id,d.locationId,b.revision,JSON.stringify(snapshot),new Date().toISOString());
+  db.prepare(`INSERT INTO customer_displays(pos_device_id,location_id,revision,payload,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(pos_device_id) DO UPDATE SET location_id=excluded.location_id,revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.revision>customer_displays.revision`).run(d.id,d.locationId,b.revision,JSON.stringify(snapshot),new Date().toISOString());
   send(res,200,{ok:true});return true;
  };
 }
