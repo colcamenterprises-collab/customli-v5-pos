@@ -4,8 +4,9 @@ export function customerDisplay({db,bad,priceOrderLine,channelFor,priceFor,getOr
  db.exec(`CREATE TABLE IF NOT EXISTS customer_displays(pos_device_id TEXT PRIMARY KEY,location_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,updated_at TEXT NOT NULL)`);
  const blank=()=>{const profile=db.prepare("SELECT profile_json FROM restaurant_setup WHERE id='primary'").get(),config=templates(db,location(db)).find(t=>t.purpose==='customer')?.config||{},asset=config.logoAsset?db.prepare('SELECT data FROM receipt_assets WHERE id=? AND location_id=?').get(config.logoAsset,location(db)):null;const logo=/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(asset?.data||'')?asset.data:'';return {items:[],subtotal:0,discount:0,total:0,state:'waiting',branding:{name:config.businessName||(profile?JSON.parse(profile.profile_json).restaurantName:'')||'Customli',logo}};};
  return ({user,p,method,b,url,res,send})=>{
-  if(p!=='/display')return false;
+  if(p!=='/display'&&p!=='/display/revision')return false;
   const d=user.device;if(!d||!['POS','CDS'].includes(d.mode))bad(403,'Use a registered POS or customer display');
+  if(p==='/display/revision'){if(d.mode!=='POS'||method!=='GET')bad(403,'POS access is required');send(res,200,{revision:db.prepare('SELECT revision FROM customer_displays WHERE pos_device_id=?').get(d.id)?.revision||0});return true;}
   if(method==='GET'){
    if(d.mode!=='CDS')bad(403,'Customer display access is required');
    const requested=url.searchParams.get('posDeviceId');if(requested&&requested!==d.posDeviceId)bad(403,'This POS is not assigned to your display');
@@ -32,6 +33,7 @@ export function customerDisplay({db,bad,priceOrderLine,channelFor,priceFor,getOr
    if(channel.kind==='partner'){discount=Number(b.partnerDiscountMinor||0);if(!Number.isSafeInteger(discount)||discount<0||discount>subtotal)bad(400,'Check the delivery discount');}
    snapshot={...snapshot,items,subtotal,discount,total:subtotal-discount,state:'order'};
   }
+  const prior=db.prepare('SELECT revision FROM customer_displays WHERE pos_device_id=?').get(d.id);if(prior&&prior.revision>=b.revision)bad(409,'The display has a newer update. Refresh and retry.');
   db.prepare(`INSERT INTO customer_displays(pos_device_id,location_id,revision,payload,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(pos_device_id) DO UPDATE SET location_id=excluded.location_id,revision=excluded.revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.revision>customer_displays.revision`).run(d.id,d.locationId,b.revision,JSON.stringify(snapshot),new Date().toISOString());
   send(res,200,{ok:true});return true;
  };

@@ -16,16 +16,16 @@ try{
  assert.equal((await call('/me','GET',null,'wrongTenant')).status,401);assert.equal((await call('/me','GET',null,'wrongLocation')).status,401);
  for(const route of ['/products','/reports','/shift','/users'])assert.equal((await call(route,'GET',null,'cds')).status,403);
  assert.equal((await call('/me','GET',null,'kds')).status,403);
- ok(await call('/shift/open','POST',{openingCash:0}),201);
+ const originalShift=ok(await call('/shift/open','POST',{openingCash:0}),201).shift;
  const products=ok(await call('/products')),product=products[0];
  ok(await call('/display','POST',{revision:1,items:[{productId:product.id,quantity:2}]}));
  let display=ok(await call('/display','GET',null,'cds'));assert.equal(display.total,product.price*2);assert.equal(display.items[0].name,product.name);assert.equal(display.state,'order');assert(!JSON.stringify(display).includes('owner@test'));
  assert.equal((await call('/display','POST',{revision:2,items:[]},'cds')).status,403);
  assert.equal((await call('/display?posDeviceId=pos2','GET',null,'cds')).status,403);
- ok(await call('/display','POST',{revision:1,items:[]}));assert.equal(ok(await call('/display','GET',null,'cds')).state,'order','Delayed display snapshot cannot overwrite newer state');
+ assert.equal((await call('/display','POST',{revision:1,items:[]})).status,409);assert.equal(ok(await call('/display','GET',null,'cds')).state,'order','Delayed display snapshot cannot overwrite newer state');
  let first;
  for(let i=0;i<30;i++){
-  const body={idempotencyKey:'universal-'+i,items:[{productId:product.id,quantity:1}],paymentMethod:'Cash',received:1000};
+  const body={idempotencyKey:'universal-'+i,expectedShiftId:originalShift.id,expectedTotalMinor:product.price,items:[{productId:product.id,quantity:1}],paymentMethod:'Cash',received:1000};
   const sale=ok(await call('/orders','POST',body),201);if(!first)first=sale;
   assert.equal(ok(await call('/orders','POST',body)).id,sale.id);
   assert.equal((await call('/orders','POST',{...body,received:1001})).status,409);
@@ -33,6 +33,7 @@ try{
  }
  ok(await call('/display','POST',{revision:2,orderId:first.id}));display=ok(await call('/display','GET',null,'cds'));assert.equal(display.state,'recorded');assert.equal(display.total,first.total-first.discount_total);
  assert.equal((await call('/display','POST',{revision:3,orderId:first.id},'pos2')).status,404);
+ ok(await call('/shift/close','POST',{closingCash:0}));ok(await call('/shift/open','POST',{openingCash:0}),201);const staleBody={idempotencyKey:'stale-shift',expectedShiftId:originalShift.id,expectedTotalMinor:product.price,items:[{productId:product.id,quantity:1}],paymentMethod:'Cash',received:1000};assert.equal((await call('/orders','POST',staleBody)).status,409,'Queued sale cannot move to a different shift');assert.equal(ok(await call('/display/revision')).revision,2);
  const db=new DatabaseSync(dir+'/pos.sqlite',{readOnly:true});assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,30);assert.equal(db.prepare("SELECT value FROM sequence WHERE name='receipt'").get().value,30);assert.equal(db.prepare('SELECT COUNT(*) n FROM kitchen_outbox').get().n,30);assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');db.close();
  revoked=true;assert.equal((await call('/display','GET',null,'cds')).status,401);
  console.log('PASS universal API: 30 orders, duplicate/mutated retry protection, scoped CDS, tenant/location/mode enforcement, revocation and integrity');
