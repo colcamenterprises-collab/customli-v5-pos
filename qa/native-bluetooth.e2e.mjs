@@ -41,15 +41,18 @@ try{
  const dialog=page.getByRole('dialog',{name:'Bluetooth printer'});await dialog.waitFor();
  await dialog.getByText('Printer ABC').first().waitFor();
  await dialog.getByRole('button',{name:/Printer ABC/}).click();
- await dialog.getByRole('button',{name:'Connect & save'}).click();
- await dialog.getByText('Printer saved.').waitFor();
+ await dialog.getByRole('button',{name:'Connect'}).click();
+ await dialog.getByText('Printer connected. Send a test print before saving.').waitFor();
  await dialog.getByRole('button',{name:'Test print'}).click();
  await dialog.getByText('Test sent. Check').waitFor();
+ await dialog.getByRole('checkbox',{name:'Paper printed correctly'}).check();
+ await dialog.getByRole('button',{name:'Save printer'}).click();
+ await dialog.getByText('Printer saved.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('customli.v5.bluetooth.printer')).width),80);
  assert.deepEqual(await page.evaluate(()=>window.__bluetoothCalls),['connect:AA:BB:CC:DD:EE:FF','disconnect','connect:AA:BB:CC:DD:EE:FF','test','disconnect']);
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  assert.deepEqual(errors,[]);
- console.log('PASS Android mocked UI: find → select → connect & save → test → release socket; 390px responsive, no page errors');
+ console.log('PASS Android mocked UI: find → connect → test → paper confirmation → save → release socket; 390px responsive, no page errors');
 }finally{
  await browser?.close();await new Promise(ok=>app.close(ok));api.kill();await new Promise(ok=>api.once('exit',ok));await fixture.close();rmSync(data,{recursive:true,force:true});
 }

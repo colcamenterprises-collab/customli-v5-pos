@@ -1,7 +1,7 @@
 {
   "appId": "io.customli.v5pos",
-  "appName": "Customli V5 POS",
-  "webDir": "dist",
+  "appName": "Customli",
+  "webDir": "android-dist",
   "android": {
     "allowMixedContent": false
   },
@@ -11,10 +11,8 @@
     }
   },
   "server": {
-    "url": "https://customli.io/v5/",
-    "cleartext": false,
-    "allowNavigation": [
-      "customli.io"
-    ]
+    "hostname": "localhost",
+    "androidScheme": "https",
+    "cleartext": false
   }
 }

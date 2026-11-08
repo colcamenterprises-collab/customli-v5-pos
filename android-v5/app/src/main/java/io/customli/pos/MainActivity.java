@@ -7,6 +7,8 @@ public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(ThermalPrinterPlugin.class);
+    registerPlugin(DeviceIdentityPlugin.class);
+    registerPlugin(DeviceDiscoveryPlugin.class);
     super.onCreate(savedInstanceState);
   }
 }
