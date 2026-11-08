@@ -7,12 +7,12 @@ Checkpoint: 2026-11-08. Baseline POS main d9dbc6b46caca82304d9d87281441db6970a54
 | Repository and runtime audit | IN PROGRESS | Both sources inspected; live services and data paths identified. Live POS checkout has historical uncommitted deployment changes, so release from isolated clean clones. Full audit cannot be called complete yet. |
 | Central device registry | DONE | Additive identity DB tables; explicit locations, manager registration, persistent roles, revocation, heartbeat, same-location peer metadata. device-registry.test.mjs passes. |
 | POS tenant/location and mode isolation | DONE | Required tenant binding fails closed; native devices require exact configured location. CDS denied staff and financial routes. universal-api.test.mjs passes. |
-| CDS API and display | IN PROGRESS | Server-authoritative prices, safe customer fields, linked POS completion, monotonic snapshots. App rendering/build verification pending. |
+| CDS API and display | IN PROGRESS | Server-authoritative prices, safe customer fields, linked POS completion, monotonic snapshots. Seven shell browser scenarios passed, including CDS safe totals and stale-state suppression. Physical acceptance remains pending. |
 | Order synchronization | IN PROGRESS | IndexedDB command persistence before submit, payload mismatch rejection, original idempotency key recovery, 30-order HTTP acceptance passes. Native offline restart test pending. |
-| Universal Android | IN PROGRESS | Existing package retained; local POS/KDS assets, Keystore device credential, server-assigned mode. Build/release testing pending. |
+| Universal Android | DONE (software build) | Version 1.1.0/10002. Gradle assembleDebug and bundleRelease passed. Six asset contracts and seven mocked-native browser scenarios passed. Physical acceptance remains blocked. |
 | KDS | DONE (software integration) | Scoped central identity, durable operation deduplication, amendment/cancellation revision handling. Isolated universal-kds test passes. Physical/offline transport acceptance pending. |
-| Dashboard device management | IN PROGRESS | New Devices page with role/location updates and revocation. Build/browser verification pending. |
-| Printing | IN PROGRESS | Existing native Classic Bluetooth and central Receipt Studio reused. Hardware and shared native queue integration pending. |
+| Dashboard device management | IN PROGRESS | New Devices page with role/location updates and revocation. Test and production builds passed; dedicated Devices browser test being finalized. |
+| Printing | IN PROGRESS | Native persisted print job tests and setup browser test passed; Find → Connect → Test → confirmation → Save. Shared native groups/transport and physical hardware remain incomplete. |
 | LAN operation | NOT STARTED | Discovery metadata alone does not provide authenticated operational LAN transport. |
 | Signed Android / Play | BLOCKED | Signing/distribution access and physical hardware acceptance required; see blockers. |
 | Merge and deployment | NOT STARTED | Exact-commit release gate required. Existing production data must be backed up and verified. |
@@ -26,3 +26,7 @@ Working checkouts on VPS: `/opt/work/universal-v5/pos` branch `feat/universal-an
 Owner confirmed on 2026-11-08 that all V5 operational records are test data and authorized closure of the open test shift. Preserve records and back them up regardless.
 
 Next action: finish app and printer batch, transfer all changed sources to clean VPS clones, commit, run exact release gate, review screenshots, publish checks, merge, rerun gate on merged head, deploy test then production with backup and rollback. Keep operational browser routes until physical native acceptance.
+
+Verified batch: POS d103647 passed the complete release gate on VPS with both seven-image visual sets unchanged. Dashboard/KDS candidate 5b160a0 passed registry, KDS universal integration and bridge tests. Later source refinements require a new gate before deployment. Test APK and unsigned AAB built successfully; no production signing or Play publication claimed.
+
+Open test shift closed under owner authorization after an integrity-checked backup. Preserved 33 orders (total minor units 255950) and 1 refund (1100); counted and expected cash both zero. Evidence `/opt/backups/v5-owner-authorized-test-shift-20261108/test-shift-close.json`.

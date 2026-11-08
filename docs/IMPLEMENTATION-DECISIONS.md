@@ -11,3 +11,6 @@
 - KDS action operation IDs are durable and checked before quantity mutations; higher order revisions preserve matching completed production quantities while resetting packing checks.
 - Print socket write success proves bytes sent only. Interrupted writes require inspection and explicit reprinting; blind retries can duplicate paper.
 - Preserve existing browser routes until signed native physical acceptance passes.
+
+- Registered device identities operate as separate cashier-level actors. Registering with an Owner account never leaves a permanent Owner credential on a staff tablet. Management remains account-authenticated in Dashboard; existing manager PIN approval remains required for sensitive POS actions.
+- Recovery of an older queued payment must never clear a newly edited cart. Background recovery acknowledges the saved key and reports its receipt independently.

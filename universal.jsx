@@ -23,7 +23,7 @@ function CustomerDisplay({token,device}){
  const [display,setDisplay]=useState(null),[offline,setOffline]=useState(false);
  useEffect(()=>{let active=true;const update=async()=>{try{const next=await request(ORIGIN+'/v5/api/display?posDeviceId='+encodeURIComponent(device.posDeviceId||''),token);if(active){setDisplay(next);setOffline(next.stale===true);}}catch{if(active)setOffline(true);}};update();const timer=setInterval(update,1000);return()=>{active=false;clearInterval(timer);};},[token,device.posDeviceId]);
  const waiting=!display||display.state==='waiting';
- const safeLogo=display?.branding?.logo&&/^https:\/\/customli\.io\//.test(display.branding.logo)?display.branding.logo:null;
+ const safeLogo=display?.branding?.logo&&/^(?:https:\/\/customli\.io\/|data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$)/.test(display.branding.logo)?display.branding.logo:null;
  return <main className={styles.customer}>
   <header>{safeLogo&&<img src={safeLogo} alt=""/>}<h1>{display?.branding?.name||'Welcome'}</h1></header>
   {offline?<div className={styles.waiting}><h2>Reconnecting</h2><p>Your cashier can help with your order.</p></div>:waiting?<div className={styles.waiting}><h2>Ready when you are</h2><p>Your order will appear here.</p></div>:<>

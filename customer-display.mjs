@@ -1,7 +1,8 @@
+import {templates,location} from './print-model.mjs';
 // Customer snapshots contain no staff, cash drawer, cost or account fields.
 export function customerDisplay({db,bad,priceOrderLine,channelFor,priceFor,getOrder}) {
  db.exec(`CREATE TABLE IF NOT EXISTS customer_displays(pos_device_id TEXT PRIMARY KEY,location_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,updated_at TEXT NOT NULL)`);
- const blank=()=>({items:[],subtotal:0,discount:0,total:0,state:'waiting',branding:{name:'Customli',logo:''}});
+ const blank=()=>{const profile=db.prepare("SELECT profile_json FROM restaurant_setup WHERE id='primary'").get(),config=templates(db,location(db)).find(t=>t.purpose==='customer')?.config||{},asset=config.logoAsset?db.prepare('SELECT data FROM receipt_assets WHERE id=? AND location_id=?').get(config.logoAsset,location(db)):null;const logo=/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(asset?.data||'')?asset.data:'';return {items:[],subtotal:0,discount:0,total:0,state:'waiting',branding:{name:config.businessName||(profile?JSON.parse(profile.profile_json).restaurantName:'')||'Customli',logo}};};
  return ({user,p,method,b,url,res,send})=>{
   if(p!=='/display')return false;
   const d=user.device;if(!d||!['POS','CDS'].includes(d.mode))bad(403,'Use a registered POS or customer display');
