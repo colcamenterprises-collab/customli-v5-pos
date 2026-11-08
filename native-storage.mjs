@@ -8,7 +8,9 @@ export const cachePut=(path,value)=>op('cache','readwrite',s=>s.put({value,saved
 export const cacheGet=path=>op('cache','readonly',s=>s.get(scope()+path));
 export async function prepareCommand(body){if(!body?.idempotencyKey)throw Error('Order identity is required');const {approval,...safeBody}=body;const rows=await pendingCommands();const same=rows.find(x=>x.id===scope()+':'+body.idempotencyKey);if(same&&JSON.stringify(same.body)!==JSON.stringify(safeBody))throw Error('A saved payment is waiting to synchronize. Do not change or enter it again.');const existing=rows.find(x=>x.id!==scope()+':'+body.idempotencyKey);if(existing)throw Error('A saved payment is waiting to synchronize. Reconnect before starting another payment.');return op('commands','readwrite',s=>s.put({id:scope()+':'+body.idempotencyKey,scope:scope(),body:safeBody,requiresApproval:!!approval||same?.requiresApproval||false,state:'pending',createdAt:same?.createdAt||Date.now()}))}
 export async function markCommandAttention(key,message){const id=scope()+':'+key,record=await op('commands','readonly',s=>s.get(id));if(record)await op('commands','readwrite',s=>s.put({...record,state:'needs_attention',message:String(message).slice(0,300)}));}
-export const pendingCommands=async()=>(await op('commands','readonly',s=>s.getAll())).filter(x=>x.scope===scope()).sort((a,b)=>a.createdAt-b.createdAt);
+export const pendingCommands=async()=>(await op('commands','readonly',s=>s.getAll())).filter(x=>x.scope===scope()&&x.state!=='resolved').sort((a,b)=>a.createdAt-b.createdAt);
 export const acknowledgeCommand=key=>op('commands','readwrite',s=>s.delete(scope()+':'+key));
 export const printJobs=async()=>(await op('prints','readonly',s=>s.getAll())).filter(x=>x.scope===scope());
 export const savePrintJob=job=>op('prints','readwrite',s=>s.put({...job,scope:scope()}));
+
+export async function resolveCommand(key,resolution){const id=scope()+':'+key,record=await op('commands','readonly',s=>s.get(id));if(record)await op('commands','readwrite',s=>s.put({...record,state:'resolved',resolution,resolvedAt:Date.now()}));}

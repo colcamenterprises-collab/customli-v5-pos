@@ -3,7 +3,7 @@ import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,scryptSync} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 const dir=mkdtempSync(tmpdir()+'/customli-universal-'),tokens=Object.fromEntries(['pos','pos2','cds','kds','wrongTenant','wrongLocation'].map(k=>[k,randomBytes(32).toString('base64url')]));let revoked=false;
 const auth=http.createServer(async(req,res)=>{let raw='';for await(const c of req)raw+=c;const b=JSON.parse(raw),kind=Object.keys(tokens).find(k=>tokens[k]===b.token);res.setHeader('Content-Type','application/json');if(!kind||revoked){res.statusCode=401;return res.end('{}')}res.end(JSON.stringify({id:'owner',email:'owner@test.test',displayName:'QA',memberships:[{tenantId:kind==='wrongTenant'?'other':'tenant',role:'Owner'}],device:{id:kind,tenantId:kind==='wrongTenant'?'other':'tenant',locationId:kind==='wrongLocation'?'other':'restaurant',mode:kind==='cds'?'CDS':kind==='kds'?'KDS':'POS',posDeviceId:kind==='cds'?'pos':null}}))});await new Promise(r=>auth.listen(0,'127.0.0.1',r));
@@ -34,6 +34,7 @@ try{
  ok(await call('/display','POST',{revision:2,orderId:first.id}));display=ok(await call('/display','GET',null,'cds'));assert.equal(display.state,'recorded');assert.equal(display.total,first.total-first.discount_total);
  assert.equal((await call('/display','POST',{revision:3,orderId:first.id},'pos2')).status,404);
  ok(await call('/shift/close','POST',{closingCash:0}));ok(await call('/shift/open','POST',{openingCash:0}),201);const staleBody={idempotencyKey:'stale-shift',expectedShiftId:originalShift.id,expectedTotalMinor:product.price,items:[{productId:product.id,quantity:1}],paymentMethod:'Cash',received:1000};assert.equal((await call('/orders','POST',staleBody)).status,409,'Queued sale cannot move to a different shift');assert.equal(ok(await call('/display/revision')).revision,2);
+ const setup=new DatabaseSync(dir+'/pos.sqlite');const salt='isolated-pin-salt';setup.prepare('INSERT INTO manager_pins(user_id,salt,pin_hash,failed_attempts) VALUES(?,?,?,0)').run('owner',salt,scryptSync('123456',salt,64).toString('hex'));setup.close();ok(await call('/orders/resolve-pending','POST',{idempotencyKey:staleBody.idempotencyKey,command:staleBody,reason:'Isolated rejected request test',approval:{managerId:'owner',pin:'123456'}}));assert.equal((await call('/orders','POST',staleBody)).status,409,'Resolved command is tombstoned against late replay');
  const db=new DatabaseSync(dir+'/pos.sqlite',{readOnly:true});assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,30);assert.equal(db.prepare("SELECT value FROM sequence WHERE name='receipt'").get().value,30);assert.equal(db.prepare('SELECT COUNT(*) n FROM kitchen_outbox').get().n,30);assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');db.close();
  revoked=true;assert.equal((await call('/display','GET',null,'cds')).status,401);
  console.log('PASS universal API: 30 orders, duplicate/mutated retry protection, scoped CDS, tenant/location/mode enforcement, revocation and integrity');

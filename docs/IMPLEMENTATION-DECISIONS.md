@@ -14,3 +14,6 @@
 
 - Registered device identities operate as separate cashier-level actors. Registering with an Owner account never leaves a permanent Owner credential on a staff tablet. Management remains account-authenticated in Dashboard; existing manager PIN approval remains required for sensitive POS actions.
 - Recovery of an older queued payment must never clear a newly edited cart. Background recovery acknowledges the saved key and reports its receipt independently.
+
+- Saved command cancellation requires manager PIN and a reason. The server first checks for a committed receipt, otherwise atomically records a tombstone; the tablet retains the resolved intent audit. Ambiguous or rejected commands are never silently removed. No manager PIN is persisted in IndexedDB.
+- A queued request is bound to its original shift and displayed total. A closed shift or price change requires review; recovery cannot silently book into a later shift.

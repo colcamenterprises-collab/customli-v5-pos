@@ -30,3 +30,7 @@ Next action: finish app and printer batch, transfer all changed sources to clean
 Verified batch: POS d103647 passed the complete release gate on VPS with both seven-image visual sets unchanged. Dashboard/KDS candidate 5b160a0 passed registry, KDS universal integration and bridge tests. Later source refinements require a new gate before deployment. Test APK and unsigned AAB built successfully; no production signing or Play publication claimed.
 
 Open test shift closed under owner authorization after an integrity-checked backup. Preserved 33 orders (total minor units 255950) and 1 refund (1100); counted and expected cash both zero. Evidence `/opt/backups/v5-owner-authorized-test-shift-20261108/test-shift-close.json`.
+
+Review repairs: queued financial intent is retained after rejection, original shift and total are checked, manager PINs are omitted from IndexedDB, native bootstrap cache is atomic, recovered carts are cleared only for the original draft, and CDS revisions come from the server. Saved-payments review supports manager-authorized audited cancellation with a server tombstone preventing a late replay. New native POS recovery browser test exercises the actual packaged POS, offline restart and stable key recovery.
+
+Actual packaged POS recovery test passed on VPS: interrupted cash send survived reload; cached products, channels, channel prices and original shift loaded; online recovery acknowledged the original request key once. Manager PIN setup now verifies the authoritative Dashboard password, with an isolated API regression test.
