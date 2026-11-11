@@ -6,3 +6,5 @@ qa/print-results/
 test-dist/
 
 qa/release-results/
+
+android-dist/

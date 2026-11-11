@@ -9,3 +9,5 @@ export async function platformIdentity(token){
   return identity;
  }catch{return null;}
 }
+
+export async function platformPassword(accountId,password){const url=process.env.PLATFORM_AUTH_INTROSPECT_URL,secret=process.env.PLATFORM_AUTH_SERVICE_SECRET;if(!url||!secret)return false;try{const response=await fetch(url.replace(/\/introspect$/,'/verify-password'),{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Auth-Secret':secret},body:JSON.stringify({accountId,password}),signal:AbortSignal.timeout(5000),cache:'no-store'});return response.ok&&(await response.json()).valid===true;}catch{return false}}

@@ -24,6 +24,7 @@ const paid=await mod.printPaidReceipt(request,{id:'receipt-id'});assert.equal(pa
 throwPrint=true;
 await assert.rejects(()=>mod.printPaidReceipt(request,{id:'receipt-id'}),/Bluetooth write failed/);
 assert.equal(connected,false,'The Bluetooth socket must be released even after an error');
+const jobs=mod.nativePrintJobs();assert.equal(jobs.length,3);assert.equal(jobs[1].status,'sent');assert.equal(jobs[2].status,'uncertain');assert.equal(jobs[2].reprint,true);assert.equal(jobs[2].parentId,jobs[1].id);
 assert.equal(calls.filter(x=>x==='disconnect').length,3);
 globalThis.window={Capacitor:{isNativePlatform:()=>false,Plugins:{ThermalPrinter:plugin}}};
 assert.equal(mod.bluetoothAvailable(),false);

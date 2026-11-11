@@ -14,6 +14,7 @@ export async function startPlatformAuthFixture(){
   }
   if(req.method==='GET'&&req.url==='/api/auth/me')return valid?json(res,200,{id:accountId,email,username:'QA Owner',displayName:'QA Owner',emailVerified:true,memberships:[{tenantId,role:'Owner'}],providers:{google:false,apple:false}}):json(res,401,{message:'Session expired'});
   if(req.method==='POST'&&req.url==='/api/auth/logout'){active=false;return json(res,200,{ok:true});}
+  if(req.method==='POST'&&req.url==='/api/auth/verify-password')return req.headers['x-platform-auth-secret']===secret&&body.accountId===accountId&&body.password===password?json(res,200,{valid:true}):json(res,403,{message:'Incorrect account password'});
   if(req.method==='POST'&&req.url==='/api/auth/introspect'){
    if(req.headers['x-platform-auth-secret']!==secret)return json(res,403,{message:'Service authentication failed'});
    return active&&body.token===token?json(res,200,{id:accountId,email,displayName:'QA Owner',memberships:[{tenantId,role:'Owner'}]}):json(res,401,{message:'Invalid session'});

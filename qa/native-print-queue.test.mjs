@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {createNativePrintQueue} from '../native-print-queue.mjs';
+const values=new Map();let counter=0,scope='device@restaurant';
+const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)};
+const options={storage,scope:()=>scope,uuid:()=>String(++counter),now:()=>new Date(0).toISOString()};
+const queue=createNativePrintQueue(options),printer={address:'AA:BB:CC:DD:EE:FF'};
+let sends=0;
+const first=await queue.run({receiptId:'order',printer},async()=>{sends++;assert.equal(queue.jobs()[0].status,'sending','Reading current in-flight jobs must not mark them interrupted');});
+assert.equal(first.sent,true);assert.equal(first.printed,false);assert.equal(queue.jobs()[0].status,'sent');
+await assert.rejects(queue.run({receiptId:'order',printer},async()=>{sends++;throw Error('lost socket')}),/Check the paper/);
+assert.equal(queue.jobs()[1].status,'uncertain');assert.equal(queue.jobs()[1].parentId,first.jobId);assert.equal(queue.jobs()[1].reprint,true);
+const persisted=JSON.parse(values.get('customli.v5.native-print-jobs.'+scope));persisted.push({id:'crashed',status:'sending',receiptId:'other'});values.set('customli.v5.native-print-jobs.'+scope,JSON.stringify(persisted));
+const restarted=createNativePrintQueue(options);assert.equal(restarted.jobs().at(-1).status,'uncertain');assert.equal(sends,2,'Restart never sends automatically');
+scope='different@restaurant';assert.equal(restarted.jobs().length,0,'Another device cannot see these jobs');
+let writes=0;const failed=createNativePrintQueue({storage:{getItem:()=>null,setItem:()=>{writes++;throw Error('full')}},scope:()=>scope});
+await assert.rejects(failed.run({receiptId:'unsafe',printer},async()=>sends++),/full/);assert.equal(sends,2,'No printer bytes before durable write');assert.equal(writes,1);
+const corrupt=createNativePrintQueue({storage:{getItem:()=>'{',setItem:()=>{}},scope:()=>scope});await assert.rejects(corrupt.run({receiptId:'unsafe',printer},async()=>sends++),/could not be read/);assert.equal(sends,2);
+console.log('PASS native print jobs: durable before send, uncertainty on restart/failure, explicit reprint identity, device scope, storage failure blocks printing');
