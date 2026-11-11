@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {shiftCostSummary} from './sales-costs.mjs';
 const json=(res,status,body)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(body));};
 const num=v=>Number(v||0);
-const dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''))&&!Number.isNaN(Date.parse(v+'T00:00:00Z'));
+const dateOk=v=>{const value=String(v||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;const time=Date.parse(value+'T00:00:00Z');return Number.isFinite(time)&&new Date(time).toISOString().slice(0,10)===value};
 const timestamp=v=>new Date(v+'T00:00:00+07:00').toISOString();
 function ensureSignoffTables(db){
  db.exec(`CREATE TABLE IF NOT EXISTS shift_signoffs(
