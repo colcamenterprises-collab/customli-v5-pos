@@ -5,10 +5,12 @@ import {randomUUID} from 'node:crypto';
  */
 export function migratePhaseOne(db){
  const columns=db.prepare('PRAGMA table_info(order_items)').all().map(x=>x.name);
+ const groupCols=db.prepare('PRAGMA table_info(modifier_groups)').all().map(x=>x.name);
+ if(groupCols.length&&!groupCols.includes('description'))db.exec("ALTER TABLE modifier_groups ADD COLUMN description TEXT NOT NULL DEFAULT ''");
  if(!columns.includes('instructions'))db.exec("ALTER TABLE order_items ADD COLUMN instructions TEXT NOT NULL DEFAULT ''");
  db.exec(`
 CREATE TABLE IF NOT EXISTS modifier_groups(
- id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+ id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,description TEXT NOT NULL DEFAULT '',
  min_select INTEGER NOT NULL DEFAULT 0 CHECK(min_select>=0),
  max_select INTEGER NOT NULL DEFAULT 1 CHECK(max_select>=1 AND max_select<=30),
  active INTEGER NOT NULL DEFAULT 1,sort_order INTEGER NOT NULL DEFAULT 0,
@@ -58,7 +60,7 @@ export function modifierRoutes({db,p,method,b,user,res,send}){
   const name=nonempty(b.name,'group name'),min=integer(b.minSelect??0,0,30,'minimum selections'),max=integer(b.maxSelect??1,1,30,'maximum selections');
   if(min>max)failure(400,'Minimum cannot exceed maximum selections.');
   const id=randomUUID();
-  db.prepare('INSERT INTO modifier_groups(id,name,min_select,max_select,sort_order) VALUES(?,?,?,?,?)').run(id,name,min,max,db.prepare('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM modifier_groups').get().n);
+  db.prepare('INSERT INTO modifier_groups(id,name,description,min_select,max_select,sort_order) VALUES(?,?,?,?,?,?)').run(id,name,String(b.description||'').slice(0,300),min,max,db.prepare('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM modifier_groups').get().n);
   return send(res,201,details(db,db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id)));
  }
  if(/^\/modifier-groups\/[a-f0-9-]{36}$/i.test(p)&&method==='PATCH'){
@@ -67,7 +69,7 @@ export function modifierRoutes({db,p,method,b,user,res,send}){
   const name=nonempty(b.name??g.name,'group name'),min=integer(b.minSelect??g.min_select,0,30,'minimum'),max=integer(b.maxSelect??g.max_select,1,30,'maximum');
   if(min>max)failure(400,'Minimum cannot exceed maximum.');
   const active=b.active===undefined?g.active:b.active?1:0;
-  db.prepare('UPDATE modifier_groups SET name=?,min_select=?,max_select=?,active=? WHERE id=?').run(name,min,max,active,id);
+  db.prepare('UPDATE modifier_groups SET name=?,description=?,min_select=?,max_select=?,active=? WHERE id=?').run(name,String(b.description??g.description??'').slice(0,300),min,max,active,id);
   return send(res,200,details(db,db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id)));
  }
  if(/^\/modifier-groups\/[a-f0-9-]{36}\/options$/i.test(p)&&method==='POST'){

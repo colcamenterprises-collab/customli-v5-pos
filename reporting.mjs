@@ -90,9 +90,11 @@ export function handleReporting(url, method, res, db, user) {
     const channelSummary=Object.values(orders.reduce((map,o)=>{const id=o.channel_id||'in-store';const row=map[id]||(map[id]={channel_id:id,orders:0,gross_sales:0,discounts:0,refunds:0,net_sales:0});row.orders++;row.gross_sales+=cents(o.subtotal);row.discounts+=cents(o.discount_total);row.net_sales+=cents(o.subtotal)-cents(o.discount_total);return map},{}));
     for(const r of refunds){const id=db.prepare('SELECT channel_id FROM orders WHERE id=?').get(r.order_id)?.channel_id||'in-store';const row=channelSummary.find(x=>x.channel_id===id);if(row){row.refunds+=cents(r.amount);row.net_sales-=cents(r.amount)}}
     for(const row of channelSummary)row.name=db.prepare('SELECT name FROM sales_channels WHERE id=?').get(row.channel_id)?.name||row.channel_id;
-    const paymentTotals={Cash:{count:0,total:0},QR:{count:0,total:0},Partner:{count:0,total:0}};
-    for(const o of orders)if(paymentTotals[o.payment_method]){paymentTotals[o.payment_method].count++;paymentTotals[o.payment_method].total+=cents(o.total)-cents(o.discount_total);}
-    for(const r of refunds)if(paymentTotals[r.payment_method])paymentTotals[r.payment_method].refunds=(paymentTotals[r.payment_method].refunds||0)+cents(r.amount);
+    const paymentTotals={Cash:{count:0,total:0},QR:{count:0,total:0}};
+    const paymentKey=o=>o.payment_method==='Partner'?(db.prepare('SELECT name FROM sales_channels WHERE id=?').get(o.channel_id)?.name||o.channel_id||'Delivery partner'):o.payment_method||'Other';
+    for(const o of orders){const key=paymentKey(o),v=paymentTotals[key]||(paymentTotals[key]={count:0,total:0});v.count++;v.total+=cents(o.total)-cents(o.discount_total)}
+    for(const r of refunds){const key=r.payment_method||'Other';const v=paymentTotals[key]||(paymentTotals[key]={count:0,total:0});v.refunds=(v.refunds||0)+cents(r.amount)}
+    const partnerTotal=Object.entries(paymentTotals).filter(([k])=>k!=='Cash'&&k!=='QR').reduce((n,[,v])=>n+v.total,0);
     const shiftRows=rows(db,`SELECT s.*, (SELECT COALESCE(SUM(o.total-o.discount_total),0) FROM orders o WHERE o.shift_id=s.id AND o.status IN ('paid','refunded') AND o.payment_method='Cash') AS cash_sales,(SELECT COALESCE(SUM(o.total-o.discount_total),0) FROM orders o WHERE o.shift_id=s.id AND o.status IN ('paid','refunded') AND o.payment_method='QR') AS qr_sales,(SELECT COALESCE(SUM(r.amount),0) FROM refunds r WHERE r.payment_method='Cash' AND r.order_id IN (SELECT id FROM orders WHERE shift_id=s.id)) AS cash_refunds,(SELECT COALESCE(SUM(r.amount),0) FROM refunds r WHERE r.payment_method='QR' AND r.order_id IN (SELECT id FROM orders WHERE shift_id=s.id)) AS qr_refunds,(SELECT COALESCE(SUM(amount),0) FROM shift_cash_movements m WHERE m.shift_id=s.id AND direction='in') AS money_in,(SELECT COALESCE(SUM(amount),0) FROM shift_cash_movements m WHERE m.shift_id=s.id AND direction='out') AS money_out,(SELECT COALESCE(SUM(CASE direction WHEN 'in' THEN amount ELSE -amount END),0) FROM shift_cash_movements m WHERE m.shift_id=s.id) AS net_movements FROM shifts s WHERE ${filter.shiftId?'s.id=?':'s.opened_at>=? AND s.opened_at<?'} ORDER BY s.opened_at DESC`,filter.shiftId?[filter.shiftId]:args).map(s=>({...s,expected_cash:Number(s.opening_cash)+Number(s.cash_sales)-Number(s.cash_refunds)+Number(s.net_movements),variance:s.closing_cash===null?null:Number(s.closing_cash)-(Number(s.opening_cash)+Number(s.cash_sales)-Number(s.cash_refunds)+Number(s.net_movements))}));
     const type=url.searchParams.get('type')||'overview';
     if(!reports.has(type))throw Object.assign(new Error('Choose a report type.'),{status:400});
@@ -106,7 +108,7 @@ export function handleReporting(url, method, res, db, user) {
       csv(res,`v5-${type}.csv`,map); return true;
     }
     let data;
-    if(type==='overview') data={timezone:'Asia/Bangkok',gross_sales:gross,discounts:discount,refunds:refund,net_sales:net,total_orders:orders.length,average_order_value:orders.length?Math.round(net/orders.length):0,cash_sales:paymentTotals.Cash.total,qr_sales:paymentTotals.QR.total,partner_sales:paymentTotals.Partner.total,channel_summary:channelSummary};
+    if(type==='overview') data={timezone:'Asia/Bangkok',gross_sales:gross,discounts:discount,refunds:refund,net_sales:net,total_orders:orders.length,average_order_value:orders.length?Math.round(net/orders.length):0,cash_sales:paymentTotals.Cash.total,qr_sales:paymentTotals.QR.total,partner_sales:partnerTotal,channel_summary:channelSummary};
     else if(type==='channels')data=channelSummary;else if(type==='transactions') data=orders;
     else if(type==='items') data=itemRows;
     else if(type==='discounts') data=discounts;
