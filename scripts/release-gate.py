@@ -13,7 +13,7 @@ def state():
  files=[pathlib.Path(p) for p in git('ls-files').splitlines() if (ROOT/p).is_file()]
  return {'commit':git('rev-parse','HEAD'),'source':digest_files(files,ROOT),'builds':{name:digest_files([p.relative_to(ROOT/name) for p in (ROOT/name).rglob('*') if p.is_file()],ROOT/name) for name in ['dist','test-dist']}}
 p=argparse.ArgumentParser();p.add_argument('--verify',action='store_true');a=p.parse_args();result=ROOT/'qa/release-results/attestation.json';result.parent.mkdir(parents=True,exist_ok=True)
-with open(ROOT/'.git/v5-release-gate.lock','w') as lock:
+with open(pathlib.Path(git('rev-parse','--git-path','v5-release-gate.lock')),'w') as lock:
  fcntl.flock(lock,fcntl.LOCK_EX)
  if a.verify:
   if git('status','--porcelain'):sys.exit('BLOCKED: release checkout is not clean; commit and rerun the gate.')

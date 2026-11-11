@@ -75,3 +75,6 @@
 .category{flex:0 0 100px!important;width:100px!important;height:100px!important;min-height:100px!important;max-height:100px!important;aspect-ratio:1/1;gap:7px!important;padding:8px 5px!important;border-radius:16px!important;justify-content:center!important;font-size:12px!important;line-height:1.2;text-align:center;white-space:normal}
 .category-icon{font-size:21px!important;line-height:1!important;flex-shrink:0}
 @media(max-width:600px){.category{flex-basis:92px!important;width:92px!important;height:92px!important;min-height:92px!important;max-height:92px!important}}
+
+/* Keep availability controls accessible without enlarging POS menu cards. */
+.product .photo{position:relative}.product .photo .availability-toggle{position:absolute;right:8px;top:8px;z-index:1;width:auto;max-width:calc(100% - 16px);border:1px solid #c4dcd5;border-radius:7px;padding:5px 8px;background:#fff;color:#245c4c;font-size:11px;font-weight:600;line-height:1.25;box-shadow:0 1px 3px #00000015}.product[style*="0.45"] .availability-toggle{opacity:1}
