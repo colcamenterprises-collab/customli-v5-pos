@@ -25,7 +25,9 @@ test('checkout enforces cashier permissions, manager PIN, role restriction and a
  const manager=tokens.Manager,pin='468215',psalt=randomBytes(8).toString('hex');
  db.prepare('INSERT INTO manager_pins(user_id,salt,pin_hash,failed_attempts) VALUES(?,?,?,0)').run(manager.id,psalt,scryptSync(pin,psalt,64).toString('hex'));
  db.prepare('INSERT INTO shifts(id,opened_at,opening_cash) VALUES(?,?,?)').run(randomUUID(),now,250000);
- const product=db.prepare('SELECT id,price FROM products WHERE active=1 LIMIT 1').get();assert.ok(product);
+ const fixtureProductId=randomUUID();
+ db.prepare('INSERT INTO products(id,name,category,price,active) VALUES(?,?,?,?,1)').run(fixtureProductId,'Isolated QA Burger','Burgers',12000);
+ const product=db.prepare('SELECT id,price FROM products WHERE id=? AND active=1').get(fixtureProductId);assert.ok(product);
  const make=(name,mode)=>{const id=randomUUID();db.prepare('INSERT INTO discount_catalog(id,name,kind,value,active,created_by,created_at,updated_at,access_mode) VALUES(?,?,?,?,1,?,?,?,?)').run(id,name,'percent',1000,tokens.Owner.id,now,now,mode);return id};
  const unrestricted=make('Cashier Ok','cashier'),protectedId=make('PIN Needed','manager_pin'),restricted=make('Owner Only','manager_only');
  const api=async(role,endpoint,body)=>{const r=await fetch(base+endpoint,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+tokens[role].token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()}};
