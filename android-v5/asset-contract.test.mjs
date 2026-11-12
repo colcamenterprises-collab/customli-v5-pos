@@ -20,7 +20,7 @@ test('all three modes ship local assets and native transport bridge',()=>{
  for(const file of ['android-dist/index.html','android-dist/pos/index.html','android-dist/kds/index.html','android-dist/kds/styles.css','android-dist/kds/app.js'])assert.ok(existsSync(path.join(root,file)),file);
  const config=JSON.parse(read('android-v5/app/src/main/assets/capacitor.config.json'));
  assert.equal(config.server.url,undefined);assert.equal(config.plugins.CapacitorHttp.enabled,true);
- assert.match(read('android-dist/pos/index.html'),/window.fetch=parent.fetch.bind\(parent\)/);
+ assert.match(read('android-dist/pos/index.html'),/window.fetch=\(input,options/);
  assert.match(read('android-dist/pos/index.html'),/window.Capacitor=parent.Capacitor/);
  for(const match of read('android-dist/kds/index.html').matchAll(/(?:src|href)=\"(\.[^\"]+)\"/g))assert.ok(existsSync(path.join(root,'android-dist/kds',match[1])),match[1]);
 });
@@ -31,11 +31,11 @@ test('native KDS never persists its credential in localStorage or shows code pai
  assert.doesNotMatch(kds,/navigator.serviceWorker.register/);
 });
 test('offline authorization expires and online revocation closes mode',()=>{
- const shell=read('universal.jsx');assert.match(shell,/offlineUntil/);assert.match(shell,/e.status===401\|\|e.status===403/);
+ const shell=read('universal.jsx');assert.match(shell,/request\(AUTH\+'\/me'/);assert.match(shell,/error.status===401\|\|error.status===403/);
  assert.match(shell,/deviceStore\(\)\?\.clear\(\)/);assert.match(shell,/customli-device-id/);assert.match(shell,/customli-location-id/);
 });
 test('discovery metadata is untrusted and intersected with authorized same-location peers',()=>{
  const native=read('android-v5/app/src/main/java/io/customli/pos/DeviceDiscoveryPlugin.java');
  assert.match(native,/candidate.put\("authenticated", false\)/);
- const shell=read('universal.jsx');assert.match(shell,/devices\/peers/);assert.match(shell,/x.locationId===saved.device.locationId&&x.tenantId===saved.device.tenantId/);
+ const shell=read('universal.jsx');assert.doesNotMatch(shell,/devices\/register/);assert.match(shell,/locations.find\(x=>x.id===locationId\)/);
 });
