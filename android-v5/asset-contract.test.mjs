@@ -1,3 +1,4 @@
+import {Script} from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
@@ -22,6 +23,7 @@ test('all three modes ship local assets and native transport bridge',()=>{
  assert.equal(config.server.url,undefined);assert.equal(config.plugins.CapacitorHttp.enabled,true);
  assert.match(read('android-dist/pos/index.html'),/window.fetch=\(input,options/);
  assert.match(read('android-dist/pos/index.html'),/window.Capacitor=parent.Capacitor/);
+ for(const mode of ['pos','kds']){const html=read('android-dist/'+mode+'/index.html');const bridge=html.match(/<script>([\s\S]*?window\.Capacitor=parent\.Capacitor[\s\S]*?)<\/script>/);assert.ok(bridge,mode+' bridge');new Script(bridge[1],{filename:mode+'-bridge.js'});}
  for(const match of read('android-dist/kds/index.html').matchAll(/(?:src|href)=\"(\.[^\"]+)\"/g))assert.ok(existsSync(path.join(root,'android-dist/kds',match[1])),match[1]);
 });
 test('native KDS never persists its credential in localStorage or shows code pairing',()=>{
