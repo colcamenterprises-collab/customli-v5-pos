@@ -5,18 +5,19 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import net from 'node:net';
+import {startPlatformAuthFixture} from './platform-auth-fixture.mjs';
 
 const dir=mkdtempSync(path.join(tmpdir(),'customli-v5-onboard-http-'));
 const probe=net.createServer();
 await new Promise(ok=>probe.listen(0,'127.0.0.1',ok));
 const port=probe.address().port;
 await new Promise(ok=>probe.close(ok));
-const password='isolated-onboarding-only-password-2026';
+const identity=await startPlatformAuthFixture();
 const api='http://127.0.0.1:'+port+'/v5-test/api';
 const child=spawn(process.execPath,['server.mjs'],{
  cwd:new URL('..',import.meta.url).pathname,
  env:{...process.env,PORT:String(port),V5_DATA_DIR:dir,V5_API_PREFIX:'/v5-test/api',V5_DEMO_SEED:'0',
- V5_BOOTSTRAP_PASSWORD:password,V5_KDS_ROUTING_ENABLED:'0',V5_PRINT_KDS_DB:''},
+ PLATFORM_AUTH_INTROSPECT_URL:identity.url+'/introspect',PLATFORM_AUTH_SERVICE_SECRET:identity.secret,PLATFORM_TENANT_ID:identity.tenantId,V5_KDS_ROUTING_ENABLED:'0',V5_PRINT_KDS_DB:''},
  stdio:['ignore','pipe','pipe']
 });
 let log='';child.stderr.on('data',x=>log+=x);
@@ -34,12 +35,9 @@ try{
  assert(ready,'Isolated API did not start: '+log);
  const db=new DatabaseSync(path.join(dir,'pos.sqlite'));
  assert.equal(db.prepare('SELECT count(*) AS n FROM products').get().n,0,'LIVE-mode setup must never include demo sushi');
- db.prepare("UPDATE users SET role='Owner' WHERE username='manager'").run();
  db.close();
  assert.equal((await req('/onboarding')).code,401,'Public cannot import website data');
- const auth=await req('/login','POST',{username:'manager',password});
- assert.equal(auth.code,200,'Isolated owner login must work');
- bearer=auth.data.token;
+ bearer=identity.token;
  assert.equal((await req('/onboarding')).data.readiness.profile,false);
  const preview=await req('/onboarding/preview','POST',account);
  assert.equal(preview.code,200);
@@ -56,5 +54,6 @@ try{
  console.log('PASS isolated HTTP signup-intake -> V5 owner approval -> receipt templates; demo-seed disabled; auth enforced; no fake menu or readiness.');
 }finally{
  child.kill('SIGTERM');await new Promise(ok=>child.once('exit',ok));
+ await identity.close();
  rmSync(dir,{recursive:true,force:true});
 }

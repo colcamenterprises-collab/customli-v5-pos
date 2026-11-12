@@ -4,11 +4,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
+import {startPlatformAuthFixture} from './platform-auth-fixture.mjs';
 const port=4445;
 const dirname=mkdtempSync(path.join(tmpdir(),'v5-phase1-'));
 const root='http://127.0.0.1:'+port+'/v5/api';
+const identity=await startPlatformAuthFixture();
 const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url).pathname,
- env:{...process.env,PORT:String(port),V5_DATA_DIR:dirname,V5_DEMO_SEED:'1',V5_BOOTSTRAP_PASSWORD:'temporary-qa-only-strong-passphrase'},
+ env:{...process.env,PORT:String(port),V5_DATA_DIR:dirname,V5_DEMO_SEED:'1',PLATFORM_AUTH_INTROSPECT_URL:identity.url+'/introspect',PLATFORM_AUTH_SERVICE_SECRET:identity.secret,PLATFORM_TENANT_ID:identity.tenantId},
  stdio:['ignore','pipe','pipe']});
 let serverLog='';child.stderr.on('data',c=>serverLog+=c.toString());
 const wait=async()=>{for(let i=0;i<100;i++){if(child.exitCode!==null)throw Error('QA server exited: '+serverLog);try{const r=await fetch(root+'/health');if(r.ok||r.status===401)return}catch{}await new Promise(r=>setTimeout(r,60))}throw Error('QA server failed: '+serverLog)};
@@ -23,8 +25,7 @@ async function call(route,method='GET',data=null,auth=true){
 function success(x,code=200){assert.equal(x.status,code,JSON.stringify(x.body));return x.body;}
 try{
  await wait();
- const login=success(await call('/login','POST',{username:'manager',password:'temporary-qa-only-strong-passphrase'},false));
- bearer=login.token;
+ bearer=identity.token;
  const cats=success(await call('/categories')),products=success(await call('/products'));
  assert(cats.length>=1&&products.length>=1);
  const product=products[0];
@@ -68,6 +69,7 @@ try{
 }finally{
  child.kill('SIGTERM');
  await new Promise(r=>child.once('close',r));
+ await identity.close();
  rmSync(dirname,{recursive:true,force:true});
  console.log('Isolated QA database and service removed. Production never touched.');
 }
