@@ -61,7 +61,18 @@ const auth=async req=>{
  }else if(user.role!==role){
   db.prepare('UPDATE users SET role=? WHERE id=?').run(role,user.id);user={...user,role};
  }
- return {...user,device:identity.device||null};
+ const installation=req.headers['x-customli-installation'];
+ const mode=req.headers['x-customli-mode'];
+ let operationalDevice=identity.device||null;
+ if(!operationalDevice&&installation!==undefined){
+  const requestedLocation=req.headers['x-customli-location'];
+  if(typeof installation!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(installation)||
+     !['POS','CDS'].includes(mode)||requestedLocation!==process.env.PLATFORM_LOCATION_ID||
+     !identity.locations?.some(location=>location.id===requestedLocation&&location.tenantId===requiredTenant))return null;
+  operationalDevice={id:'account:'+identity.id+':'+installation,tenantId:requiredTenant,
+   locationId:requestedLocation,mode,posDeviceId:mode==='CDS'?'account:'+identity.id+':'+installation:null};
+ }
+ return {...user,device:operationalDevice};
 };const manager=u=>{if(!['Manager','Owner'].includes(u.role))bad(403,'Manager approval required')};const authorize=(b,user,action,orderId)=>{if(!b.approval||!b.approval.managerId||!b.approval.pin)bad(403,'Manager PIN approval required');const m=db.prepare("SELECT users.id,users.role,manager_pins.* FROM users JOIN manager_pins ON users.id=manager_pins.user_id WHERE users.id=? AND users.active=1 AND users.role IN ('Manager','Owner')").get(String(b.approval.managerId));if(!m)bad(403,'Manager PIN is not configured');if(m.locked_until&&new Date(m.locked_until)>new Date())bad(429,'Manager PIN temporarily locked');const valid=verify(String(b.approval.pin),{salt:m.salt,password_hash:m.pin_hash});if(!valid){const attempts=m.failed_attempts+1;db.prepare('UPDATE manager_pins SET failed_attempts=?,locked_until=? WHERE user_id=?').run(attempts,attempts>=5?new Date(Date.now()+15*60000).toISOString():null,m.id);bad(403,attempts>=5?'Manager PIN temporarily locked':'Incorrect manager PIN')}db.prepare('UPDATE manager_pins SET failed_attempts=0,locked_until=NULL WHERE user_id=?').run(m.id);return m.id};
 if(process.env.V5_DEMO_SEED==='1'&&!db.prepare('SELECT id FROM products LIMIT 1').get()){const rows=[['Salmori Sushi',1000],['Nori Glaze Salmon Sushi',1100],['Sweet Shrimp Sushi',1200],['Umami Gyuniku Sushi',1350],['Tamago Ikura Sushi',1150],['Maguro Wasabi Sushi',1200],['Nori Pop Sushi',1100],['Shrimp Wrap Sushi',1250]];for(const [name,price]of rows)db.prepare('INSERT INTO products(id,name,category,price) VALUES(?,?,?,?)').run(randomUUID(),name,'Nigiri Sushi',price)}
 for(const c of db.prepare('SELECT DISTINCT category FROM products').all()){db.prepare('INSERT OR IGNORE INTO categories(id,name,sort_order) VALUES(?,?,0)').run(randomUUID(),c.category)}
