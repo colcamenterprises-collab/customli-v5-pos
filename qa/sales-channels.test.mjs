@@ -4,18 +4,26 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
-import {createHash,randomBytes,randomUUID,scryptSync} from 'node:crypto';
+import {randomBytes,randomUUID,scryptSync} from 'node:crypto';
+import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 test('sale channels: setup, price snapshot, item and whole-ticket discount, receipts, reporting and shift cash',async t=>{
  const dir=mkdtempSync(path.join(tmpdir(),'v5-channel-')),port=44035,base='http://127.0.0.1:'+port+'/v5/api';
- const child=spawn(process.execPath,['--no-warnings','server.mjs'],{cwd:new URL('..',import.meta.url).pathname.replace(/\/qa\/$/,'/'),env:{...process.env,V5_DATA_DIR:dir,PORT:String(port),V5_KDS_ROUTING_ENABLED:'0',V5_DEMO_SEED:'1',V5_BOOTSTRAP_PASSWORD:''},stdio:['ignore','pipe','pipe']});
+ const users={};
+ const identity=http.createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;
+  const match=Object.entries(users).find(([,user])=>user.token===JSON.parse(raw||'{}').token);
+  res.writeHead(match?200:401,{'Content-Type':'application/json'});
+  res.end(JSON.stringify(match?{id:match[1].id,displayName:match[0],memberships:[{tenantId:'qa-tenant',role:match[0]==='Cashier'?'Staff':match[0]}]}:{}));
+ });await new Promise(resolve=>identity.listen(0,'127.0.0.1',resolve));
+ t.after(()=>identity.close());
+ const child=spawn(process.execPath,['--no-warnings','server.mjs'],{cwd:new URL('..',import.meta.url).pathname.replace(/\/qa\/$/,'/'),env:{...process.env,V5_DATA_DIR:dir,PORT:String(port),V5_KDS_ROUTING_ENABLED:'0',V5_DEMO_SEED:'1',PLATFORM_AUTH_INTROSPECT_URL:'http://127.0.0.1:'+identity.address().port+'/api/auth/introspect',PLATFORM_AUTH_SERVICE_SECRET:'isolated-channel-secret',PLATFORM_TENANT_ID:'qa-tenant'},stdio:['ignore','pipe','pipe']});
  let output='';child.stderr.on('data',b=>output+=String(b).slice(0,500));
  t.after(()=>{child.kill('SIGTERM');rmSync(dir,{recursive:true,force:true})});
  let ready=false;for(let i=0;i<75;i++){try{const r=await fetch(base+'/health');if(r.status===401){ready=true;break}}catch{}await delay(80)}assert.ok(ready,'API failed to start '+output.slice(0,300));
  const db=new DatabaseSync(path.join(dir,'pos.sqlite'));
- const users={};for(const role of ['Owner','Manager','Cashier']){const id=randomUUID(),salt=randomBytes(8).toString('hex'),token=randomBytes(32).toString('hex');db.prepare('INSERT INTO users(id,username,role,salt,password_hash) VALUES(?,?,?,?,?)').run(id,role,role,salt,scryptSync('qa-not-production',salt,64).toString('hex'));db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').run(createHash('sha256').update(token).digest('hex'),id,new Date(Date.now()+3600000).toISOString());users[role]={id,token};}
+ for(const role of ['Owner','Manager','Cashier']){const id=randomUUID(),salt=randomBytes(8).toString('hex'),token=randomBytes(32).toString('hex');db.prepare('INSERT INTO users(id,username,role,salt,password_hash) VALUES(?,?,?,?,?)').run(id,role,role,salt,scryptSync('qa-not-production',salt,64).toString('hex'));users[role]={id,token};}
  const api=async(role,p,method='GET',body)=>{const r=await fetch(base+p,{method,headers:{Authorization:'Bearer '+users[role].token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return{status:r.status,data:await r.json()}};
  const products=(await api('Owner','/products')).data;
  assert.ok(products.length>=2);

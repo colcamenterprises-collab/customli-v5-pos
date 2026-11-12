@@ -14,7 +14,18 @@ function vite(args,env={}){const result=spawnSync(process.execPath,['node_module
 vite(['build','--config','vite.android.config.mjs'],{VITE_PLATFORM_ORIGIN:origin});
 renameSync(path.join(out,'universal.html'),path.join(out,'index.html'));
 vite(['build','--base=./','--outDir','android-dist/pos'],{VITE_API_BASE:origin+'/v5/api',VITE_AUTH_API_BASE:origin+'/v5-auth/api/auth',VITE_NATIVE_BUILD:'true',VITE_NATIVE_APP:'1'});
-const frameBridge='<script>window.Capacitor=parent.Capacitor;window.fetch=parent.fetch.bind(parent);</script>';
+const frameBridge=String.raw`<script>
+window.Capacitor=parent.Capacitor;
+window.fetch=(input,options={})=>{
+ const url=new URL(input,location.href);
+ const headers=new Headers(options.headers);
+ if(url.origin==='https://customli.io'&&(/^(\/v5\/api|\/v5-kds\/api)/).test(url.pathname)){
+  headers.set('X-Customli-Location',parent.sessionStorage.getItem('customli-location-id')||'');
+  headers.set('X-Customli-Installation',parent.sessionStorage.getItem('customli-installation-id')||'');
+  headers.set('X-Customli-Mode',parent.sessionStorage.getItem('customli-mode')||'');
+ }
+ return parent.fetch(input,{...options,headers});
+};</script>`;
 const posIndex=path.join(out,'pos/index.html');writeFileSync(posIndex,readFileSync(posIndex,'utf8').replace('<head>','<head>'+frameBridge));
 cpSync(kds,path.join(out,'kds'),{recursive:true});
 cpSync(path.join(root,'public/brand'),path.join(out,'kds/brand'),{recursive:true});

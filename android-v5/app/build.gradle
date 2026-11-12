@@ -71,3 +71,9 @@ tasks.register('buildLocalApplication', Exec) {
     commandLine 'node', 'scripts/build-android.mjs'
 }
 tasks.named('preBuild').configure { dependsOn 'buildLocalApplication' }
+tasks.configureEach { task ->
+    if (task.name.startsWith('merge') && task.name.endsWith('Assets')) {
+        task.dependsOn 'buildLocalApplication'
+        task.outputs.upToDateWhen { false }
+    }
+}

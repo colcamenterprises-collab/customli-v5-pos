@@ -5,13 +5,14 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import {startPlatformAuthFixture} from './platform-auth-fixture.mjs';
 
 const dir=mkdtempSync(path.join(tmpdir(),'v5-expense-http-')),probe=net.createServer();
 await new Promise(ok=>probe.listen(0,'127.0.0.1',ok));
 const port=probe.address().port;await new Promise(ok=>probe.close(ok));
-const password='isolated-expense-test-owner-2026';
+const identity=await startPlatformAuthFixture();
 const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url).pathname,
- env:{...process.env,PORT:String(port),V5_DATA_DIR:dir,V5_BOOTSTRAP_PASSWORD:password,V5_DEMO_SEED:'0',V5_KDS_ROUTING_ENABLED:'0',V5_PRINT_KDS_DB:'',V5_API_PREFIX:'/v5-test/api'},
+ env:{...process.env,PORT:String(port),V5_DATA_DIR:dir,PLATFORM_AUTH_INTROSPECT_URL:identity.url+'/introspect',PLATFORM_AUTH_SERVICE_SECRET:identity.secret,PLATFORM_TENANT_ID:identity.tenantId,V5_DEMO_SEED:'0',V5_KDS_ROUTING_ENABLED:'0',V5_PRINT_KDS_DB:'',V5_API_PREFIX:'/v5-test/api'},
  stdio:['ignore','pipe','pipe']});
 let err='';child.stderr.on('data',chunk=>err+=chunk);
 const exited=new Promise(resolve=>child.once('exit',resolve));
@@ -28,10 +29,8 @@ try{
  assert.equal((await request('/expenses')).status,401);
  const db=new DatabaseSync(path.join(dir,'pos.sqlite'));
  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM products').get().n,0);
- db.prepare("UPDATE users SET role='Owner' WHERE username='manager'").run();
  db.close();
- const login=await request('/login','POST',{username:'manager',password});
- assert.equal(login.status,200);token=login.data.token;
+ token=identity.token;
  const added=await request('/expenses','POST',{receiptDate:'2026-10-29',supplier:'Makro',description:'Food supply',category:'Food & Beverage',amountMinor:89000,paymentMethod:'Bank transfer'});
  assert.equal(added.status,201,JSON.stringify(added));
  const data=await request('/expenses?from=2026-10-01&to=2026-10-31');
@@ -48,4 +47,4 @@ try{
  assert.equal(last.data.totals.external_business,124000);
  assert.equal(last.data.external.length,2);
  console.log('PASS real isolated HTTP owner auth, outside-shift expense, duplicate-safe bank import, Super Cheap matching, approval and net totals; no production database touched.');
-}catch(e){console.error('HTTP QA:',e.message,'Server:',err);throw e;}finally{child.kill('SIGTERM');await exited;rmSync(dir,{recursive:true,force:true});}
+}catch(e){console.error('HTTP QA:',e.message,'Server:',err);throw e;}finally{child.kill('SIGTERM');await exited;await identity.close();rmSync(dir,{recursive:true,force:true});}
