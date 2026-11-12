@@ -35,7 +35,7 @@ async function scenario({mode='CDS',network=false,status=200,expired=false,stale
  const page=await context.newPage();await page.goto(base);return{context,page};
 }
 try{
- let test=await scenario();await test.page.getByRole('heading',{name:'Smash Brothers Burgers'}).waitFor();await test.page.getByText('Double Burger',{exact:false}).waitFor();assert.match(await test.page.locator('body').innerText(),/270/);assert.match(await test.page.locator('body').innerText(),/order has been recorded/);assert.equal(await test.page.getByRole('button').count(),0);await test.context.close();
+ let test=await scenario();await test.page.getByRole('heading',{name:'Smash Brothers Burgers'}).waitFor();await test.page.getByText('Double Burger',{exact:false}).waitFor();assert.match(await test.page.locator('body').innerText(),/270/);assert.match(await test.page.locator('body').innerText(),/order has been recorded/);assert.equal(await test.page.getByRole('button',{name:'Switch app'}).count(),1);await test.context.close();
  test=await scenario({stale:true});await test.page.getByRole('heading',{name:'Reconnecting'}).waitFor();assert.equal(await test.page.getByText('Double Burger',{exact:false}).count(),0);await test.context.close();
  test=await scenario({status:401});await test.page.getByRole('heading',{name:'Sign in',exact:true}).waitFor();assert.equal(await test.page.evaluate(()=>window.__nativeRecord()),null);await test.context.close();
  test=await scenario({mode:'POS'});await test.page.locator('iframe[title="Point of sale"]').waitFor();assert.equal(await test.page.evaluate(()=>sessionStorage.getItem('customli-device-id')),'device-one');assert.equal(await test.page.evaluate(()=>sessionStorage.getItem('customli-location-id')),'location-one');await test.context.close();
