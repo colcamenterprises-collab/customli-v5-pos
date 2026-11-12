@@ -41,6 +41,15 @@ const auth=async req=>{
  const member=identity.memberships.find(m=>m.tenantId===requiredTenant);
  if(identity.device&&(!process.env.PLATFORM_LOCATION_ID||identity.device.locationId!==process.env.PLATFORM_LOCATION_ID||identity.device.tenantId!==requiredTenant))return null;
  if(!member||!['Owner','Manager','Staff','Cashier'].includes(member.role))return null;
+ const requestedLocation=req.headers['x-customli-location'];
+ if(requestedLocation!==undefined&&(
+  typeof requestedLocation!=='string'||!requestedLocation||
+  requestedLocation!==process.env.PLATFORM_LOCATION_ID||
+  (identity.device
+   ? identity.device.locationId!==requestedLocation
+   : !Array.isArray(identity.locations)||!identity.locations.some(location=>
+     location.id===requestedLocation&&location.tenantId===requiredTenant))
+ ))return null;
  const role=member.role==='Staff'?'Cashier':member.role;
  let user=db.prepare('SELECT id,username,role FROM users WHERE id=? AND active=1').get(identity.id);
  if(!user){
