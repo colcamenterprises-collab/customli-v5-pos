@@ -24,7 +24,7 @@ async function scenario({mode='CDS',network=false,status=200,expired=false,stale
    if(p.endsWith('/devices/peers'))return{status:200,data:[]};
    if(p.endsWith('/locations'))return{status:200,data:[{id:'location-one',tenantId:'tenant-one',name:'Rawai',role:'Owner'}]};
    if(p.endsWith('/devices'))return{status:200,data:[{id:'pos-one',name:'Front counter',mode:'POS',locationId:'location-one',tenantId:'tenant-one'}]};
-   if(p.endsWith('/login'))return{status:200,data:{token:'account-session'}};
+   if(p.endsWith('/login'))return{status:200,data:{token:'account-session',user:{id:'owner'}}};
    if(p.endsWith('/devices/register'))return{status:200,data:{token:'new-device-token',device:{...device,mode:data.mode,posDeviceId:data.posDeviceId}}};
    if(p.endsWith('/display'))return{status:200,data:{items:[{name:'Double Burger',quantity:2,unitPrice:15000}],subtotal:30000,discount:3000,total:27000,state:'recorded',branding:{name:'Smash Brothers Burgers'},stale}};
    return{status:200,data:{...device,mode}};

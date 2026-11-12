@@ -9,8 +9,8 @@ const AUTH=ORIGIN+'/v5-auth/api/auth';
 const VERSION='1.1.0';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
-async function request(url,token='',body){
- const headers={'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})};
+async function request(url,token='',body,device){
+ const headers={'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(device?{'X-Customli-Location':device.locationId,'X-Customli-Installation':device.installationId,'X-Customli-Mode':device.mode}:{})};
  const method=body===undefined?'GET':'POST';
  let status,data;
  const native=window.Capacitor?.Plugins?.CapacitorHttp;
@@ -21,7 +21,7 @@ async function request(url,token='',body){
 }
 function CustomerDisplay({token,device}){
  const [display,setDisplay]=useState(null),[offline,setOffline]=useState(false);
- useEffect(()=>{let active=true;const update=async()=>{try{const next=await request(ORIGIN+'/v5/api/display?posDeviceId='+encodeURIComponent(device.posDeviceId||''),token);if(active){setDisplay(next);setOffline(next.stale===true);}}catch{if(active)setOffline(true);}};update();const timer=setInterval(update,1000);return()=>{active=false;clearInterval(timer);};},[token,device.posDeviceId]);
+ useEffect(()=>{let active=true;const update=async()=>{try{const next=await request(ORIGIN+'/v5/api/display?posDeviceId='+encodeURIComponent(device.posDeviceId||''),token,undefined,device);if(active){setDisplay(next);setOffline(next.stale===true);}}catch{if(active)setOffline(true);}};update();const timer=setInterval(update,1000);return()=>{active=false;clearInterval(timer);};},[token,device.posDeviceId]);
  const waiting=!display||display.state==='waiting';
  const safeLogo=display?.branding?.logo&&/^(?:https:\/\/customli\.io\/|data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$)/.test(display.branding.logo)?display.branding.logo:null;
  return <main className={styles.customer}>
@@ -35,7 +35,7 @@ function CustomerDisplay({token,device}){
 const clearKitchenCache=()=>{for(const key of Object.keys(localStorage))if(/^customli-kds-(?:production|test)-.*(?:board-cache|pending-actions|event-cursor)$/.test(key))localStorage.removeItem(key);};
 function App(){
  const [screen,setScreen]=useState('loading'),[saved,setSaved]=useState(null),[locations,setLocations]=useState([]),[locationId,setLocationId]=useState(''),[mode,setMode]=useState('POS'),[devices,setDevices]=useState([]),[posDeviceId,setPosDeviceId]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reconnecting,setReconnecting]=useState(false),[nearby,setNearby]=useState([]);
- const accountToken=useRef(''),installationId=useRef('');
+ const accountToken=useRef(''),accountId=useRef(''),installationId=useRef('');
  const persist=async next=>{await deviceStore().save({credential:JSON.stringify(next)});setSaved(next);};
  const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-production-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
  const revoke=async message=>{const discovery=window.Capacitor?.Plugins?.DeviceDiscovery;if(discovery)await discovery.stop().catch(()=>{});clearKitchenCache();await deviceStore()?.clear();sessionStorage.clear();setSaved(null);setScreen('login');setError(message);};
@@ -52,12 +52,12 @@ function App(){
   try{await request(AUTH+'/me',saved.token);setReconnecting(false);}
   catch(error){if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');else setReconnecting(true);}
  },15000);return()=>clearInterval(timer);},[screen,saved]);
-  const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
+  const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;accountId.current=login.user.id;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
  const choose=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{
   const location=locations.find(x=>x.id===locationId);
   if(!location)throw Error('Choose a restaurant');
   if(mode==='KDS'&&!['Owner','Manager'].includes(location.role))throw Error('Kitchen access requires Manager permission');
-  const device={id:'account:'+installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?'account:'+installationId.current:null};
+  const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?'account:'+accountId.current+':'+installationId.current:null};
   await open({token:accountToken.current,device});accountToken.current='';
  }catch(e){setError(e.message);}finally{setBusy(false);}};
  const retry=async()=>{setBusy(true);setError('');try{await request(AUTH+'/me',saved.token);await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
