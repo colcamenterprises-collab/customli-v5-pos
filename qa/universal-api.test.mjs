@@ -13,6 +13,7 @@ async function call(path,method='GET',body,kind='pos'){const r=await fetch(`http
 const ok=(r,status=200)=>{assert.equal(r.status,status,JSON.stringify(r.data));return r.data};
 try{
  for(let i=0;i<100;i++){try{if((await call('/me')).status===200)break}catch{}if(api.exitCode!==null)throw Error(log);await new Promise(r=>setTimeout(r,30))}
+ assert.equal((await call('/login','POST',{username:'manager',password:'invalid'})).status,410,'Legacy POS password login must never activate');
  assert.equal((await call('/me','GET',null,'wrongTenant')).status,401);assert.equal((await call('/me','GET',null,'wrongLocation')).status,401);
  for(const route of ['/products','/reports','/shift','/users'])assert.equal((await call(route,'GET',null,'cds')).status,403);
  assert.equal((await call('/me','GET',null,'kds')).status,403);
