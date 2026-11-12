@@ -10,7 +10,7 @@ const VERSION='1.1.0';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){
- const headers={'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(device?{'X-Customli-Location':device.locationId,'X-Customli-Installation':device.installationId,'X-Customli-Mode':device.mode}:{})};
+ const headers={'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(device?{'X-Customli-Location':device.locationId,'X-Customli-Installation':device.installationId,'X-Customli-Mode':device.mode,...(device.posDeviceId?{'X-Customli-Pos-Device':device.posDeviceId}:{})}:{})};
  const method=body===undefined?'GET':'POST';
  let status,data;
  const native=window.Capacitor?.Plugins?.CapacitorHttp;
@@ -52,18 +52,28 @@ function App(){
   try{await request(AUTH+'/me',saved.token);setReconnecting(false);}
   catch(error){if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');else setReconnecting(true);}
  },15000);return()=>clearInterval(timer);},[screen,saved]);
-  const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;accountId.current=login.user.id;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
+  useEffect(()=>{if(screen!=='setup'||mode!=='CDS'||!locationId||!accountToken.current)return;
+  const location=locations.find(x=>x.id===locationId);if(!location)return;
+  let active=true;
+  request(ORIGIN+'/v5/api/display/terminals',accountToken.current,undefined,
+   {locationId,installationId:installationId.current,mode:'CDS'}).then(rows=>{
+    if(active){setDevices(rows);setPosDeviceId(rows.length===1?rows[0].id:'');}
+   }).catch(error=>{if(active)setError(error.message)});
+  return()=>{active=false};
+ },[screen,mode,locationId,locations]);
+ const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;accountId.current=login.user.id;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
  const choose=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{
   const location=locations.find(x=>x.id===locationId);
   if(!location)throw Error('Choose a restaurant');
   if(mode==='KDS'&&!['Owner','Manager'].includes(location.role))throw Error('Kitchen access requires Manager permission');
-  const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?'account:'+accountId.current+':'+installationId.current:null};
+  if(mode==='CDS'&&!devices.some(x=>x.id===posDeviceId))throw Error('Choose a point of sale');
+  const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?posDeviceId:null};
   await open({token:accountToken.current,device});accountToken.current='';
  }catch(e){setError(e.message);}finally{setBusy(false);}};
  const retry=async()=>{setBusy(true);setError('');try{await request(AUTH+'/me',saved.token);await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
  if(screen==='mode'&&saved){const device=saved.device;return <div className={styles.operating}>{nearby.length>0&&device.mode!=='CDS'&&<div className={styles.discovery}>{nearby.length} nearby registered {nearby.length===1?'device':'devices'}</div>}{reconnecting&&device.mode!=='CDS'&&<div className={styles.connection}>Reconnecting to Customli</div>}{device.mode==='CDS'?<CustomerDisplay token={saved.token} device={device}/>:<iframe key={device.mode+':'+(device.station||'')} title={device.mode==='POS'?'Point of sale':'Kitchen display'} src={device.mode==='POS'?'./pos/index.html':'./kds/index.html'} className={styles.frame}/>}</div>;}
  return <main className={styles.setup}><section className={styles.card}><img className={styles.logo} src="./brand/customli-dark.png" alt="Customli"/>
- {screen==='loading'?<p>Opening Customli…</p>:screen==='login'?<form onSubmit={signIn}><h1>Sign in</h1><label>Email<input type="email" name="email" autoComplete="username" required/></label><label>Password<input type="password" name="password" autoComplete="current-password" required/></label><button disabled={busy}>{busy?'Signing in…':'Continue'}</button></form>:screen==='setup'?<form onSubmit={choose}><h1>Choose application</h1><label>Restaurant<Select aria-label="Restaurant" value={locationId} onChange={e=>setLocationId(e.target.value)} required><option value="">Choose restaurant</option>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</Select></label><label>Use this device for<Select aria-label="Use this device for" value={mode} onChange={e=>setMode(e.target.value)}><option value="POS">Point of sale</option><option value="KDS">Kitchen display</option><option value="CDS">Customer display</option></Select></label><button disabled={busy||!locationId}>{busy?'Opening…':'Open application'}</button></form>:screen==='connection'?<><h1>Connect to continue</h1><button disabled={busy} onClick={retry}>{busy?'Reconnecting…':'Try again'}</button></>:<h1>Android setup required</h1>}
+ {screen==='loading'?<p>Opening Customli…</p>:screen==='login'?<form onSubmit={signIn}><h1>Sign in</h1><label>Email<input type="email" name="email" autoComplete="username" required/></label><label>Password<input type="password" name="password" autoComplete="current-password" required/></label><button disabled={busy}>{busy?'Signing in…':'Continue'}</button></form>:screen==='setup'?<form onSubmit={choose}><h1>Choose application</h1><label>Restaurant<Select aria-label="Restaurant" value={locationId} onChange={e=>setLocationId(e.target.value)} required><option value="">Choose restaurant</option>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</Select></label><label>Use this device for<Select aria-label="Use this device for" value={mode} onChange={e=>setMode(e.target.value)}><option value="POS">Point of sale</option><option value="KDS">Kitchen display</option><option value="CDS">Customer display</option></Select></label>{mode==='CDS'&&<label>Point of sale<Select aria-label="Point of sale" value={posDeviceId} onChange={e=>setPosDeviceId(e.target.value)} required><option value="">Choose point of sale</option>{devices.map(x=><option key={x.id} value={x.id}>{x.id}</option>)}</Select></label>}<button disabled={busy||!locationId||(mode==='CDS'&&!posDeviceId)}>{busy?'Opening…':'Open application'}</button></form>:screen==='connection'?<><h1>Connect to continue</h1><button disabled={busy} onClick={retry}>{busy?'Reconnecting…':'Try again'}</button></>:<h1>Android setup required</h1>}
  {error&&<p className={styles.error} role="alert">{error}</p>}<small>Customli {VERSION}</small></section></main>;
 }
 createRoot(document.querySelector('#app')).render(<App/>);
