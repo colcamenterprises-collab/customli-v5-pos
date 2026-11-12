@@ -35,7 +35,7 @@ function CustomerDisplay({token,device}){
 const clearKitchenCache=()=>{for(const key of Object.keys(localStorage))if(/^customli-kds-(?:production|test)-.*(?:board-cache|pending-actions|event-cursor)$/.test(key))localStorage.removeItem(key);};
 function App(){
  const [screen,setScreen]=useState('loading'),[saved,setSaved]=useState(null),[locations,setLocations]=useState([]),[locationId,setLocationId]=useState(''),[mode,setMode]=useState('POS'),[devices,setDevices]=useState([]),[posDeviceId,setPosDeviceId]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reconnecting,setReconnecting]=useState(false),[nearby,setNearby]=useState([]);
- const accountToken=useRef(''),accountId=useRef(''),installationId=useRef('');
+ const accountToken=useRef(''),accountId=useRef(''),sessionExpiresAt=useRef(''),installationId=useRef('');
  const persist=async next=>{await deviceStore().save({credential:JSON.stringify(next)});setSaved(next);};
  const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-production-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
  const revoke=async message=>{const discovery=window.Capacitor?.Plugins?.DeviceDiscovery;if(discovery)await discovery.stop().catch(()=>{});clearKitchenCache();await deviceStore()?.clear();sessionStorage.clear();setSaved(null);setScreen('login');setError(message);};
@@ -46,9 +46,10 @@ function App(){
   const next=JSON.parse(state.credential);
   try{await request(AUTH+'/me',next.token);if(active)await open(next);}
   catch(error){if(!active)return;if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');
-   else{setSaved(next);setScreen('connection');setError('Connect to verify your account.');}}
+   else if(Date.parse(next.expiresAt)>Date.now()&&next.device?.mode==='POS'){await open(next);setReconnecting(true)}else{setSaved(next);setScreen('connection');setError('Connect to verify your account.');}}
  }catch(error){if(active){setError(error.message);setScreen('unavailable');}}})();return()=>{active=false};},[]);
  useEffect(()=>{if(screen!=='mode'||!saved)return;const timer=setInterval(async()=>{
+  if(Date.parse(saved.expiresAt)<=Date.now()){await revoke('Your session has expired. Sign in again.');return;}
   try{await request(AUTH+'/me',saved.token);setReconnecting(false);}
   catch(error){if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');else setReconnecting(true);}
  },15000);return()=>clearInterval(timer);},[screen,saved]);
@@ -61,14 +62,14 @@ function App(){
    }).catch(error=>{if(active)setError(error.message)});
   return()=>{active=false};
  },[screen,mode,locationId,locations]);
- const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;accountId.current=login.user.id;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
+ const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;accountId.current=login.user.id;sessionExpiresAt.current=login.expiresAt;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
  const choose=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{
   const location=locations.find(x=>x.id===locationId);
   if(!location)throw Error('Choose a restaurant');
   if(mode==='KDS'&&!['Owner','Manager'].includes(location.role))throw Error('Kitchen access requires Manager permission');
   if(mode==='CDS'&&!devices.some(x=>x.id===posDeviceId))throw Error('Choose a point of sale');
   const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?posDeviceId:null};
-  await open({token:accountToken.current,device});accountToken.current='';
+  await open({token:accountToken.current,expiresAt:sessionExpiresAt.current,device});accountToken.current='';
  }catch(e){setError(e.message);}finally{setBusy(false);}};
  const retry=async()=>{setBusy(true);setError('');try{await request(AUTH+'/me',saved.token);await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
  if(screen==='mode'&&saved){const device=saved.device;return <div className={styles.operating}>{nearby.length>0&&device.mode!=='CDS'&&<div className={styles.discovery}>{nearby.length} nearby registered {nearby.length===1?'device':'devices'}</div>}{reconnecting&&device.mode!=='CDS'&&<div className={styles.connection}>Reconnecting to Customli</div>}{device.mode==='CDS'?<CustomerDisplay token={saved.token} device={device}/>:<iframe key={device.mode+':'+(device.station||'')} title={device.mode==='POS'?'Point of sale':'Kitchen display'} src={device.mode==='POS'?'./pos/index.html':'./kds/index.html'} className={styles.frame}/>}</div>;}
