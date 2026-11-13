@@ -36,8 +36,8 @@ try{
   }}};
  },fixture.token);
  const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base);await page.getByRole('button',{name:'Bluetooth printer'}).waitFor({timeout:10000});
- await page.getByRole('button',{name:'Bluetooth printer'}).click();
+ await page.goto(base);await page.getByRole('button',{name:'Printer settings'}).waitFor({timeout:10000});
+ await page.getByRole('button',{name:'Printer settings'}).click();
  const dialog=page.getByRole('dialog',{name:'Bluetooth printer'});await dialog.waitFor();
  await dialog.getByText('Printer ABC').first().waitFor();
  await dialog.getByRole('button',{name:/Printer ABC/}).click();
