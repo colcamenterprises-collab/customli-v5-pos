@@ -36,6 +36,7 @@ function CustomerDisplay({token,device}){
 const clearKitchenCache=()=>{for(const key of Object.keys(localStorage))if(/^customli-kds-(?:production|test)-.*(?:board-cache|pending-actions|event-cursor)$/.test(key))localStorage.removeItem(key);};
 function App(){
  const [screen,setScreen]=useState('loading'),[saved,setSaved]=useState(null),[locations,setLocations]=useState([]),[locationId,setLocationId]=useState(''),[mode,setMode]=useState('POS'),[devices,setDevices]=useState([]),[posDeviceId,setPosDeviceId]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reconnecting,setReconnecting]=useState(false),[nearby,setNearby]=useState([]);
+ const [showDeviceMenu,setShowDeviceMenu]=useState(false);
  const accountToken=useRef(''),accountId=useRef(''),sessionExpiresAt=useRef(''),installationId=useRef('');
  const persist=async next=>{await deviceStore().save({credential:JSON.stringify(next)});setSaved(next);};
  const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-production-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
@@ -81,7 +82,7 @@ function App(){
   const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?posDeviceId:null};
   await open({token:accountToken.current,accountId:accountId.current,expiresAt:sessionExpiresAt.current,device});accountToken.current='';
  }catch(e){setError(e.message);}finally{setBusy(false);}};
- const switchApp=async()=>{setBusy(true);setError('');try{
+ const switchApp=async()=>{setShowDeviceMenu(false);setBusy(true);setError('');try{
   const choices=await request(AUTH+'/locations',saved.token);
   accountToken.current=saved.token;accountId.current=saved.accountId;
   sessionExpiresAt.current=saved.expiresAt;setLocations(choices);
