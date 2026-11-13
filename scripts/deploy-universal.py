@@ -87,7 +87,8 @@ try:
  run('systemctl','stop',*services)
  if production:
   for file in ['auth-server.mjs','device-registry.mjs']:shutil.copy2(dashboard/'customli-v5-dashboard'/file,targets['auth']/file)
- shutil.copy2(dashboard/'customli-v5-kds/server.mjs',targets['kds']/'server.mjs');shutil.copy2(dashboard/'customli-v5-kds/public/app.js',targets['kds']/'public/app.js')
+ shutil.copy2(dashboard/'customli-v5-kds/server.mjs',targets['kds']/'server.mjs')
+ for asset in ('app.js','styles.css'):shutil.copy2(dashboard/'customli-v5-kds/public'/asset,targets['kds']/'public'/asset)
  run('systemctl','daemon-reload');run('systemctl','start',*services)
  for unit in services:
   run('systemctl','is-active','--quiet',unit)
