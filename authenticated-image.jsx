@@ -1,3 +1,4 @@
+import styles from './pos-availability.module.css';
 import React,{useEffect,useState} from 'react';
 const cache=new Map();
 const inflight=new Map();
@@ -19,5 +20,5 @@ export function imageSource(path,token){
 export default function AuthenticatedImage({src,alt='',...props}){
  const [value,setValue]=useState('');const[failed,setFailed]=useState(false);
  useEffect(()=>{let active=true;setValue('');setFailed(false);imageSource(src,sessionStorage.getItem('customli-platform-session')||sessionStorage.getItem('v5_token')||'').then(v=>{if(active)setValue(v)}).catch(()=>{if(active)setFailed(true)});return()=>{active=false}},[src]);
- return value&&!failed?<img src={value} alt={alt} onError={()=>setFailed(true)} {...props}/>:<span role="img" aria-label={failed?'Menu photo unavailable':alt||'Menu photo loading'} className="photo-loading">{failed?'No photo':''}</span>;
+ return value&&!failed?<img src={value} alt={alt} onError={()=>setFailed(true)} {...props}/>:<span role="img" aria-label={failed?'Menu photo unavailable':alt||'Menu photo loading'} className={styles.loading}>{failed?'No photo':''}</span>;
 }

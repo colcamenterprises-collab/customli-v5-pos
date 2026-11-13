@@ -5,3 +5,5 @@
 
 :root:root{--auth-logo-size:64px}
 @media(max-width:600px){:root:root{--auth-logo-size:58px}}
+
+.rail .logo,.rail .logo img{border-radius:0!important;clip-path:none!important;overflow:visible!important}.rail .logo{background:transparent!important}.rail .logo img{object-fit:contain!important;max-width:100%;max-height:100%}
