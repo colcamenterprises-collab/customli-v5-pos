@@ -31,12 +31,15 @@ def financials():
  with sqlite3.connect('file:'+str(data/'pos.sqlite')+'?mode=ro',uri=True) as c:
   return {table:c.execute(query).fetchall() for table,query in {'orders':'select count(*),sum(total),sum(discount_total),sum(refund_total) from orders','refunds':'select count(*),sum(amount) from refunds','items':'select count(*),sum(price*quantity) from order_items'}.items()}
 with sqlite3.connect('file:'+str(data/'pos.sqlite')+'?mode=ro',uri=True) as c:
- loc=c.execute('select id from print_location').fetchone()[0]
+ receiptLocation=c.execute('select id from print_location').fetchone()[0]
  if production and c.execute('select count(*) from shifts where closed_at is null').fetchone()[0]:raise SystemExit('Close the authorized test shift before production deployment')
 with sqlite3.connect('file:'+str(authdata/'identity.sqlite')+'?mode=ro',uri=True) as c:
  name=c.execute('select name from tenants where id=?',(tenant,)).fetchone()
  if not name:raise SystemExit('Configured tenant is missing from authoritative identity service')
-locations=[{'id':loc,'tenantId':tenant,'name':name[0]}]
+ activeLocations=c.execute('select id,name from app_locations where tenant_id=? and active=1',(tenant,)).fetchall()
+ if production and len(activeLocations)!=1:raise SystemExit('Production requires exactly one active identity location')
+ loc,locationName=activeLocations[0] if activeLocations else (receiptLocation,name[0])
+locations=[{'id':loc,'tenantId':tenant,'name':locationName}]
 for src,name in [(data/'pos.sqlite','pos.sqlite'),(kddata/'kds.sqlite','kds.sqlite'),(authdata/'identity.sqlite','identity.sqlite')]:dbcopy(src,backup/name)
 before=financials();(backup/'before.json').write_text(json.dumps(before))
 # Validate identity/KDS additive migrations against backup copies before service changes.
@@ -86,6 +89,9 @@ try:
  run('systemctl','daemon-reload');run('systemctl','start',*services)
  for unit in services:
   run('systemctl','is-active','--quiet',unit)
+ if production:
+  run('systemctl','start','customli-v5-kds-publisher')
+  run('systemctl','is-active','--quiet','customli-v5-kds-publisher')
  after=financials()
  if before!=after:raise RuntimeError('Financial records changed unexpectedly during release')
  for file in [data/'pos.sqlite',kddata/'kds.sqlite',authdata/'identity.sqlite']:
@@ -98,4 +104,6 @@ except Exception:
  for file,old in reversed(configs):
   if old is None:file.unlink(missing_ok=True)
   else:file.write_bytes(old)
- run('systemctl','daemon-reload');run('systemctl','restart',apiunit,kdsunit,*(['customli-v5-auth'] if production else []));raise
+ run('systemctl','daemon-reload');run('systemctl','restart',apiunit,kdsunit,*(['customli-v5-auth'] if production else []))
+ if production:run('systemctl','start','customli-v5-kds-publisher')
+ raise
