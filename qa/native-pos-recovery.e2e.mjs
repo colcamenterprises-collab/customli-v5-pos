@@ -13,7 +13,7 @@ try{
  await page.route('https://customli.io/v5/api/**',async route=>{
   const req=route.request(),p=new URL(req.url()).pathname.slice('/v5/api'.length);if(!online)return route.abort('failed');let value=[];
   if(p==='/me')value={id:'device:test-pos',username:'Counter',role:'Cashier',device:{id:'test-pos',mode:'POS',locationId:'test-location'}};
-  if(p==='/products')value=[{id:'burger',name:'Test Burger',category:'Burgers',price:10000,active:1}];
+  if(p==='/products')value=[{id:'burger',name:'Test Burger',category:'Burgers',price:10000,active:1,available:1}];
   if(p==='/categories')value=[{id:'burgers',name:'Burgers',active:1}];
   if(p==='/shift')value={shift:{id:'original-shift',opening_cash:0,opened_at:new Date().toISOString()}};
   if(p==='/sales-channels')value=[{id:'in-store',name:'Direct',kind:'direct',active:1}];
