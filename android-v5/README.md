@@ -1,6 +1,6 @@
 # Customli universal Android application
 
-One application (`io.customli.v5pos`, upgrade-compatible with the existing V5 package), launcher **Customli**, version **1.1.0 (10002)**. The authenticated device registry assigns POS, KDS or CDS. Deep links open the saved assignment and cannot override it.
+One application (`io.customli.v5pos`, upgrade-compatible with the existing V5 package), launcher **Customli**, version **1.1.1 (10003)**. The authenticated device registry assigns POS, KDS or CDS. Deep links open the saved assignment and cannot override it.
 
 ## Build
 
