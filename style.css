@@ -78,3 +78,4 @@
 
 /* Keep availability controls accessible without enlarging POS menu cards. */
 .product .photo{position:relative}.product .photo .availability-toggle{position:absolute;right:8px;top:8px;z-index:1;width:auto;max-width:calc(100% - 16px);border:1px solid #c4dcd5;border-radius:7px;padding:5px 8px;background:#fff;color:#245c4c;font-size:11px;font-weight:600;line-height:1.25;box-shadow:0 1px 3px #00000015}.product[style*="0.45"] .availability-toggle{opacity:1}
+.mini-photo{overflow:hidden;flex:0 0 50px;background:#fff}.mini-photo img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.mini-photo .photo-loading{min-height:0;width:100%;height:100%;font-size:10px}
