@@ -1,12 +1,13 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import DashboardLogin from './dashboard-login.jsx';
 import Select from './select.jsx';
 import './design-system.css';
 import styles from './universal.module.css';
 
 const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
 const AUTH=ORIGIN+'/v5-auth/api/auth';
-const VERSION='1.1.0';
+const VERSION='1.1.1';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){
@@ -62,7 +63,16 @@ function App(){
    }).catch(error=>{if(active)setError(error.message)});
   return()=>{active=false};
  },[screen,mode,locationId,locations]);
- const signIn=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');const form=new FormData(e.currentTarget);try{const login=await request(AUTH+'/login','',{email:form.get('email'),password:form.get('password')});accountToken.current=login.token;accountId.current=login.user.id;sessionExpiresAt.current=login.expiresAt;const choices=await request(AUTH+'/locations',login.token);setLocations(choices);setLocationId(choices.length===1?choices[0].id:'');setScreen('setup');}catch(e){setError(e.message);}finally{setBusy(false);}};
+ const signIn=async login=>{
+  const choices=await request(AUTH+'/locations',login.token);
+  accountToken.current=login.token;
+  accountId.current=login.user.id;
+  sessionExpiresAt.current=login.expiresAt;
+  setLocations(choices);
+  setLocationId(choices.length===1?choices[0].id:'');
+  setError('');
+  setScreen('setup');
+ };
  const choose=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{
   const location=locations.find(x=>x.id===locationId);
   if(!location)throw Error('Choose a restaurant');
@@ -80,8 +90,9 @@ function App(){
  const logout=async()=>{setBusy(true);setError('');try{await request(AUTH+'/logout',saved.token,{});await revoke('Signed out.');}catch(error){setError('Connect to sign out of your account.');}finally{setBusy(false);}};
  const retry=async()=>{setBusy(true);setError('');try{await request(AUTH+'/me',saved.token);await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
  if(screen==='mode'&&saved){const device=saved.device;return <div className={styles.operating}><nav><button onClick={switchApp} disabled={busy}>Switch app</button><button onClick={logout} disabled={busy}>Sign out</button></nav>{nearby.length>0&&device.mode!=='CDS'&&<div className={styles.discovery}>{nearby.length} nearby registered {nearby.length===1?'device':'devices'}</div>}{reconnecting&&device.mode!=='CDS'&&<div className={styles.connection}>Reconnecting to Customli</div>}{device.mode==='CDS'?<CustomerDisplay token={saved.token} device={device}/>:<iframe key={device.mode+':'+(device.station||'')} title={device.mode==='POS'?'Point of sale':'Kitchen display'} src={device.mode==='POS'?'./pos/index.html':'./kds/index.html'} className={styles.frame}/>}</div>;}
+ if(screen==='login')return <DashboardLogin onLogin={signIn} call={(path,body)=>request(AUTH+path,'',body)} sessionMessage={error}/>;
  return <main className={styles.setup}><section className={styles.card}><img className={styles.logo} src="./brand/customli-dark.png" alt="Customli"/>
- {screen==='loading'?<p>Opening Customli…</p>:screen==='login'?<form onSubmit={signIn}><h1>Sign in</h1><label>Email<input type="email" name="email" autoComplete="username" required/></label><label>Password<input type="password" name="password" autoComplete="current-password" required/></label><button disabled={busy}>{busy?'Signing in…':'Continue'}</button></form>:screen==='setup'?<form onSubmit={choose}><h1>Choose application</h1><label>Restaurant<Select aria-label="Restaurant" value={locationId} onChange={e=>setLocationId(e.target.value)} required><option value="">Choose restaurant</option>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</Select></label><label>Use this device for<Select aria-label="Use this device for" value={mode} onChange={e=>setMode(e.target.value)}><option value="POS">Point of sale</option><option value="KDS">Kitchen display</option><option value="CDS">Customer display</option></Select></label>{mode==='CDS'&&<label>Point of sale<Select aria-label="Point of sale" value={posDeviceId} onChange={e=>setPosDeviceId(e.target.value)} required><option value="">Choose point of sale</option>{devices.map(x=><option key={x.id} value={x.id}>{x.id}</option>)}</Select></label>}<button disabled={busy||!locationId||(mode==='CDS'&&!posDeviceId)}>{busy?'Opening…':'Open application'}</button></form>:screen==='connection'?<><h1>Connect to continue</h1><button disabled={busy} onClick={retry}>{busy?'Reconnecting…':'Try again'}</button></>:<h1>Android setup required</h1>}
+ {screen==='loading'?<p>Opening Customli…</p>:screen==='setup'?<form onSubmit={choose}><h1>Choose application</h1><label>Restaurant<Select aria-label="Restaurant" value={locationId} onChange={e=>setLocationId(e.target.value)} required><option value="">Choose restaurant</option>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</Select></label><label>Use this device for<Select aria-label="Use this device for" value={mode} onChange={e=>setMode(e.target.value)}><option value="POS">Point of sale</option><option value="KDS">Kitchen display</option><option value="CDS">Customer display</option></Select></label>{mode==='CDS'&&<label>Point of sale<Select aria-label="Point of sale" value={posDeviceId} onChange={e=>setPosDeviceId(e.target.value)} required><option value="">Choose point of sale</option>{devices.map(x=><option key={x.id} value={x.id}>{x.id}</option>)}</Select></label>}<button disabled={busy||!locationId||(mode==='CDS'&&!posDeviceId)}>{busy?'Opening…':'Open application'}</button></form>:screen==='connection'?<><h1>Connect to continue</h1><button disabled={busy} onClick={retry}>{busy?'Reconnecting…':'Try again'}</button></>:<h1>Android setup required</h1>}
  {error&&<p className={styles.error} role="alert">{error}</p>}<small>Customli {VERSION}</small></section></main>;
 }
 createRoot(document.querySelector('#app')).render(<App/>);
