@@ -20,7 +20,7 @@ try:
  before=stats()
  if not test and before['shifts'][1]:raise RuntimeError('Production shift opened; release cancelled.')
  backup_db(data/'pos.sqlite','pos.sqlite');backup_db(kdsdata/'kds.sqlite','kds.sqlite');(backup/'before.json').write_text(json.dumps(before,indent=2))
- run('rsync','-a','--exclude=.git','--exclude=/dist','--exclude=/qa/print-results',str(source/'pos')+'/',str(target)+'/')
+ run('rsync','-a','--no-perms','--exclude=node_modules','--exclude=.git','--exclude=/dist','--exclude=/qa/print-results',str(source/'pos')+'/',str(target)+'/')
  build=source/'pos'/('test-dist' if test else 'dist');run('rsync','-a','--exclude=index.html',str(build)+'/',str(target/'dist')+'/');shutil.copy2(build/'index.html',target/'dist'/'index.html')
  dashbuild=source/'dashboard'/'customli-v5-dashboard'/('dist' if test else 'prod-dist');dashdest=dash/('dist' if test else 'prod-dist');run('rsync','-a','--exclude=index.html',str(dashbuild)+'/',str(dashdest)+'/');shutil.copy2(dashbuild/'index.html',dashdest/'index.html')
  shutil.copy2(source/'dashboard'/'customli-v5-kds'/'kds-order-bridge.mjs',kds/'kds-order-bridge.mjs')
