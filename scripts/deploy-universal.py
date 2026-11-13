@@ -32,6 +32,8 @@ def financials():
   return {table:c.execute(query).fetchall() for table,query in {'orders':'select count(*),sum(total),sum(discount_total),sum(refund_total) from orders','refunds':'select count(*),sum(amount) from refunds','items':'select count(*),sum(price*quantity) from order_items'}.items()}
 with sqlite3.connect('file:'+str(data/'pos.sqlite')+'?mode=ro',uri=True) as c:
  receiptLocation=c.execute('select id from print_location').fetchone()[0]
+ kitchenStations=[r[0] for r in c.execute('select name from kds_stations where active=1 order by sort_order,name')]
+ if production and ('Expo' not in kitchenStations or c.execute('select count(*) from products p left join kds_product_routes r on r.product_id=p.id where p.active=1 and r.station is null').fetchone()[0]):raise SystemExit('Route every active item and include Expo before production deployment')
  if production and c.execute('select count(*) from shifts where closed_at is null').fetchone()[0]:raise SystemExit('Close the authorized test shift before production deployment')
 with sqlite3.connect('file:'+str(authdata/'identity.sqlite')+'?mode=ro',uri=True) as c:
  name=c.execute('select name from tenants where id=?',(tenant,)).fetchone()
@@ -78,7 +80,7 @@ try:
  # Reuse the already configured introspection service secret without logging it.
  envfile=pathlib.Path('/etc')/('customli-'+kdsunit+'-universal.env');configs.append((envfile,envfile.read_bytes() if envfile.exists() else None))
  envfile.write_text('PLATFORM_AUTH_SERVICE_SECRET='+json.dumps(apiEnv['PLATFORM_AUTH_SERVICE_SECRET'])+'\n');envfile.chmod(0o600)
- config(kdsunit,'EnvironmentFile='+str(envfile)+'\nEnvironment=PLATFORM_AUTH_INTROSPECT_URL='+apiEnv['PLATFORM_AUTH_INTROSPECT_URL']+'\nEnvironment=PLATFORM_TENANT_ID='+tenant+'\nEnvironment=PLATFORM_LOCATION_ID='+loc+'\nEnvironment=KDS_OPERATIONAL_TENANT_ID='+('customli-v5-prod' if production else 'customli-v5-test')+'\n')
+ config(kdsunit,'EnvironmentFile='+str(envfile)+'\nEnvironment=PLATFORM_AUTH_INTROSPECT_URL='+apiEnv['PLATFORM_AUTH_INTROSPECT_URL']+'\nEnvironment=PLATFORM_TENANT_ID='+tenant+'\nEnvironment=PLATFORM_LOCATION_ID='+loc+'\nEnvironment=KDS_OPERATIONAL_TENANT_ID='+('customli-v5-prod' if production else 'customli-v5-test')+'\nEnvironment='+json.dumps('KDS_ACCOUNT_STATIONS='+','.join(kitchenStations))+'\n')
  services=[apiunit,kdsunit]
  if production:
   config('customli-v5-auth','Environment='+json.dumps('PLATFORM_LOCATIONS_JSON='+json.dumps(locations,separators=(',',':')))+'\n');services.append('customli-v5-auth')
