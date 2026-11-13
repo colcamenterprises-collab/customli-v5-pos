@@ -43,7 +43,7 @@ try{
  test=await scenario({mode:'KDS'});await test.page.frameLocator('iframe').getByRole('heading',{name:'Order assembly'}).waitFor();assert.equal(await test.page.frameLocator('iframe').getByText('Pair kitchen display').count(),0);await test.context.close();
  test=await scenario({registered:false});
  await test.page.getByRole('img',{name:'Customli'}).waitFor();
- await test.page.waitForFunction(()=>document.querySelector('.auth-logo img')?.naturalWidth>0);
+ await test.page.waitForFunction(()=>document.querySelector('img[src$="customli-login-logo.svg"]')?.naturalWidth>0);
  await test.page.getByRole('button',{name:'Show password'}).click();
  assert.equal(await test.page.getByPlaceholder('Enter password').getAttribute('type'),'text');
  await test.page.getByRole('button',{name:'Forgot password?'}).click();
