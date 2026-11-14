@@ -11,7 +11,7 @@ def png(path,size,foreground=False):
   # Approved logo artwork: 948x692 bounding box in 2048px image.
   # Inset safely within Android's adaptive icon mask; never clip the two bars.
   scale=size/1024
-  rects=[(212,293,812,446,28),(212,578,812,731,28)]
+  rects=[(292,355,732,467,22),(292,557,732,669,22)]
   rows=[]
   for y in range(size):
     row=bytearray([0]);py=(y+.5)/scale
