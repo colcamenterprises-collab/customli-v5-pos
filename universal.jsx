@@ -7,7 +7,7 @@ import styles from './universal.module.css';
 
 const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
 const AUTH=ORIGIN+'/v5-auth/api/auth';
-const VERSION='1.1.3';
+const VERSION='1.1.4';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){
@@ -40,6 +40,7 @@ function App(){
  const [launcherTab,setLauncherTab]=useState('home');
  const openDashboard=async()=>{setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openDashboard()}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
  const openSupport=async()=>{setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openSupport()}catch(e){setError(e.message||'Could not open support in your browser.')}};
+ useEffect(()=>{const handler=e=>{if(e.source!==document.querySelector('iframe')?.contentWindow||e.origin!==window.location.origin||e.data?.type!=='customli:open-dashboard')return;openDashboard()};window.addEventListener('message',handler);return()=>window.removeEventListener('message',handler)},[]);
  const accountToken=useRef(''),accountId=useRef(''),sessionExpiresAt=useRef(''),installationId=useRef('');
  const persist=async next=>{await deviceStore().save({credential:JSON.stringify(next)});setSaved(next);};
  const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-production-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
