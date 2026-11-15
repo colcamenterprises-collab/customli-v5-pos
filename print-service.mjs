@@ -1,6 +1,6 @@
 import {paymentRequest} from './print-payments.mjs';
 import {randomUUID,randomBytes} from 'node:crypto';
-import {audit,createDocuments,defaults,enqueuePrint,fail,hash,location,now,purposes,resolvePacking,sampleOrder,simplePacking,templates,validatePackingRule,validateTemplate} from './print-model.mjs';
+import {audit,createDocuments,defaults,enqueuePrint,fail,hash,location,now,purposes,resolvePacking,sampleOrder,simplePacking,templates,validatePackingRule,validateTemplate,readPrintPolicy,validatePrintPolicy} from './print-model.mjs';
 import {encodeDocument,normalizeAsset,renderDocument} from './print-render.mjs';
 const owner=u=>{if(u.role!=='Owner')fail(403,'Only the Owner can change print settings.');};
 const operator=u=>{if(!['Owner','Manager'].includes(u.role))fail(403,'Manager access is required.');};
@@ -43,12 +43,13 @@ export async function printRoute({db,p,method,b,user,res,send,getOrder}){
   // Local Android Bluetooth printing is a device action, not a gateway job.
   // Return the same saved Receipt Studio ESC/POS raster bytes; never say paper printed.
   if(!['Owner','Manager','Cashier'].includes(user.role))fail(403,'Sign in as POS staff.');
-  const orderId=String(b?.orderId||''),paperWidth=Number(b?.paperWidth);
+  const orderId=String(b?.orderId||''),paperWidth=Number(b?.paperWidth),purpose=String(b?.purpose||'customer');
+  if(!['kitchen','customer','cashier'].includes(purpose))fail(400,'Choose a receipt type.');
   if(!/^[0-9a-f-]{36}$/i.test(orderId)||![58,80].includes(paperWidth))fail(400,'Choose a saved receipt and 58 or 80 mm paper.');
   const o=getOrder(orderId);
   if(!o)fail(404,'Receipt not found.');
   if(!['paid','refunded'].includes(o.status))fail(409,'Only paid receipts can be printed.');
-  const t=templates(db,loc).find(t=>t.purpose==='customer');
+  const t=templates(db,loc).find(t=>t.purpose===purpose);
   if(!t)fail(409,'Set up a customer receipt template first.');
   const config={...t.config,width:paperWidth};
   const [document]=createDocuments(o,config,simplePacking(o),{batchId:'NATIVE-DEVICE',templateId:t.id,templateVersion:t.version});
@@ -56,11 +57,13 @@ export async function printRoute({db,p,method,b,user,res,send,getOrder}){
   const bytes=await encodeDocument(document,{language:'escpos',transport:'bluetooth',width:paperWidth,height:0,dpi:203,media:'continuous'},assetsFor(db,document,loc));
   if(bytes.length>600000)fail(422,'Receipt is too large for the printer.');
   audit(db,loc,user.id,'native.payload.prepared',{receiptId:orderId,width:paperWidth,bytes:bytes.length});
-  return send(res,200,{format:'escpos',base64:bytes.toString('base64'),bytes:bytes.length,receiptNumber:o.receipt_number,templateVersion:t.version,paperWidth,printed:false});
+  return send(res,200,{format:'escpos',base64:bytes.toString('base64'),bytes:bytes.length,receiptNumber:o.receipt_number,templateVersion:t.version,paperWidth,purpose,printed:false});
  }
+ if(p==='/print/policy'&&method==='GET')return send(res,200,readPrintPolicy(db,loc));
+ if(p==='/print/policy'&&post){owner(user);const config=validatePrintPolicy(b,db,loc);db.prepare('INSERT INTO print_policies(location_id,config,updated_at,actor_id) VALUES(?,?,?,?) ON CONFLICT(location_id) DO UPDATE SET config=excluded.config,updated_at=excluded.updated_at,actor_id=excluded.actor_id').run(loc,JSON.stringify(config),now(),user.id);audit(db,loc,user.id,'policy.updated',config);return send(res,200,config);}
  if(p==='/print/payment-request'&&post)return paymentRequest({db,b,user,res,send});
  if(p==='/print/available-printers'&&method==='GET')return send(res,200,db.prepare("SELECT id,name FROM printer_devices WHERE location_id=? AND revoked=0 AND json_extract(profile,'$.language')='escpos'").all(loc));
- if(p==='/print/state'&&method==='GET'){operator(user);return send(res,200,{locationId:loc,scope:'This deployment serves one location. Separate databases are required for separate locations.',defaults:purposes.map(defaults),templates:templates(db,loc),devices:db.prepare('SELECT * FROM printer_devices WHERE location_id=? ORDER BY rowid').all(loc).map(safeDevice),routes:db.prepare('SELECT * FROM printer_routes WHERE location_id=?').all(loc).map(r=>({...r,filters:JSON.parse(r.filters)})),jobs:db.prepare('SELECT id,batch_id,order_id,printer_id,purpose,status,attempts,last_error,parent_id,created_at,completed_at FROM print_jobs WHERE location_id=? ORDER BY rowid DESC LIMIT 100').all(loc),events:db.prepare('SELECT * FROM print_events WHERE location_id=? ORDER BY id DESC LIMIT 50').all(loc),packingRules:db.prepare('SELECT * FROM packing_rules WHERE location_id=?').all(loc).map(r=>({...r,config:JSON.parse(r.config)})),hardwareCertified:false});}
+ if(p==='/print/state'&&method==='GET'){operator(user);return send(res,200,{locationId:loc,policy:readPrintPolicy(db,loc),scope:'This deployment serves one location. Separate databases are required for separate locations.',defaults:purposes.map(defaults),templates:templates(db,loc),devices:db.prepare('SELECT * FROM printer_devices WHERE location_id=? ORDER BY rowid').all(loc).map(safeDevice),routes:db.prepare('SELECT * FROM printer_routes WHERE location_id=?').all(loc).map(r=>({...r,filters:JSON.parse(r.filters)})),jobs:db.prepare('SELECT id,batch_id,order_id,printer_id,purpose,status,attempts,last_error,parent_id,created_at,completed_at FROM print_jobs WHERE location_id=? ORDER BY rowid DESC LIMIT 100').all(loc),events:db.prepare('SELECT * FROM print_events WHERE location_id=? ORDER BY id DESC LIMIT 50').all(loc),packingRules:db.prepare('SELECT * FROM packing_rules WHERE location_id=?').all(loc).map(r=>({...r,config:JSON.parse(r.config)})),hardwareCertified:false});}
  if(p==='/print/templates'&&post){owner(user);const config=validateTemplate(b.config);for(const id of [config.logoAsset,config.paymentAsset].filter(Boolean))if(!db.prepare('SELECT 1 FROM receipt_assets WHERE id=? AND location_id=?').get(id,loc))fail(400,'Upload the image for this location.');
  const old=b.id?db.prepare('SELECT * FROM receipt_templates WHERE id=? AND location_id=?').get(b.id,loc):null;if(b.id&&!old)fail(404,'Template not found.');if(old&&old.version!==b.expectedVersion)fail(409,'This template changed. Reload before saving.');if(old&&old.purpose!==config.purpose)fail(400,'Duplicate a template to change its purpose.');
  const id=old?.id||randomUUID(),version=(old?.version||0)+1;db.exec('BEGIN IMMEDIATE');try{db.prepare('INSERT INTO receipt_templates(id,location_id,purpose,name,version) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,version=excluded.version').run(id,loc,config.purpose,config.name,version);db.prepare('INSERT INTO receipt_template_versions VALUES(?,?,?,?,?,?)').run(id,version,loc,JSON.stringify(config),user.id,now());audit(db,loc,user.id,'template.saved',{id,version});db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}return send(res,200,{id,version,config});}

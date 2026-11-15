@@ -24,7 +24,7 @@ export async function renderDocument(document,assets={}){
    nodes.push('<text x="'+x+'" y="'+y+'" font-size="'+size+'" font-weight="'+(bold?700:400)+'" text-anchor="'+anchor+'"'+(family?' font-family="'+xml(family)+'"':'')+'>'+xml(line)+'</text>');
   }
  };
- const receipt=['customer','payment','delivery'].includes(p);
+ const receipt=['customer','cashier','payment','delivery'].includes(p);
  const centered=function(value,scale,bold){text(value,receipt?'center':'left',sizeFor(scale||1),bold!==false,0)};
  const rule=function(){
   y+=Math.ceil(lineHeight*.6);
@@ -55,7 +55,7 @@ export async function renderDocument(document,assets={}){
  if(document.void)centered('VOID — DO NOT PACK',1.05,true);
  const externalRef=String(o.partner_reference||'').trim(),internalRef=String(o.receipt_number==null?'':o.receipt_number).trim();
  const delivery=!!externalRef;
- if(t.showOrderType!==false)centered(delivery?String(o.channel_id||'DELIVERY').toUpperCase()+' ORDER':p==='payment'?'PAYMENT REQUEST':p==='summary_label'?'ORDER SUMMARY':p==='package_label'?'PACKAGE LABEL':'ORDER NUMBER',.9,true);
+ if(t.showOrderType!==false)centered(delivery?String(o.channel_id||'DELIVERY').toUpperCase()+' ORDER':p==='payment'?'PAYMENT REQUEST':p==='cashier'?'CASHIER COPY':p==='summary_label'?'ORDER SUMMARY':p==='package_label'?'PACKAGE LABEL':'ORDER NUMBER',.9,true);
  centered(externalRef||internalRef||'—',preset==='minimalist'?2.05:2.5,true);
  if(externalRef&&internalRef&&t.showInternalReceiptNumber!==false)centered('Receipt #'+internalRef,.82,false);
  if(p==='payment')centered('UNPAID',1.05,true);
