@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-export const purposes=['customer','payment','kitchen','packing','delivery','summary_label','package_label'];
+export const purposes=['cashier','customer','payment','kitchen','packing','delivery','summary_label','package_label'];
 export const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 export const hash=x=>createHash('sha256').update(typeof x==='string'?x:JSON.stringify(x)).digest('hex');
 export const now=()=>new Date().toISOString();
@@ -33,6 +33,7 @@ export function validateTemplate(t){
 }
 export function migratePrint(db){db.exec(`
  CREATE TABLE IF NOT EXISTS print_location(id TEXT PRIMARY KEY);
+ CREATE TABLE IF NOT EXISTS print_policies(location_id TEXT PRIMARY KEY,config TEXT NOT NULL,updated_at TEXT NOT NULL,actor_id TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS receipt_templates(id TEXT PRIMARY KEY,location_id TEXT NOT NULL,purpose TEXT NOT NULL,name TEXT NOT NULL,version INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1);
  CREATE TABLE IF NOT EXISTS receipt_template_versions(template_id TEXT NOT NULL,version INTEGER NOT NULL,location_id TEXT NOT NULL,config TEXT NOT NULL,actor_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(template_id,version));
  CREATE TABLE IF NOT EXISTS receipt_assets(id TEXT PRIMARY KEY,location_id TEXT NOT NULL,data TEXT NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,created_at TEXT NOT NULL);
@@ -89,7 +90,7 @@ export function createDocuments(order,template,packing,meta={}){
 export function enqueuePrint(db,order,event='sale.completed',actor='system',eventId=''){const loc=location(db),packing=resolvePacking(db,order),key=[loc,order.id,packing.revision,event,eventId].join(':');
  const existing=db.prepare('SELECT id FROM print_batches WHERE event_key=?').get(key);if(existing)return existing.id;
  const batchId=randomUUID();db.prepare('INSERT INTO print_batches VALUES(?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now());
- const all=templates(db,loc),routes=db.prepare('SELECT * FROM printer_routes WHERE location_id=? AND trigger=? AND active=1').all(loc,event),seen=new Set();
+ const all=templates(db,loc),policy=readPrintPolicy(db,loc),savedRoutes=db.prepare('SELECT * FROM printer_routes WHERE location_id=? AND trigger=? AND active=1').all(loc,event),automatic=event==='sale.completed',configuredRoutes=automatic?printPurposes.filter(p=>policy.auto[p]&&policy.printerAssignments[p]).map(p=>({printer_id:policy.printerAssignments[p],template_id:all.find(t=>t.purpose===p)?.id,filters:'{}',active:1})).filter(r=>r.template_id):[],routes=[...configuredRoutes,...savedRoutes.filter(r=>!automatic||!printPurposes.includes(all.find(t=>t.id===r.template_id)?.purpose)||policy.auto[all.find(t=>t.id===r.template_id)?.purpose])],seen=new Set();
  for(const route of routes){const t=all.find(t=>t.id===route.template_id),device=db.prepare('SELECT * FROM printer_devices WHERE id=? AND location_id=? AND revoked=0').get(route.printer_id,loc);if(!t||!device)continue;
  const filter=JSON.parse(route.filters);if(filter.channels?.length&&!filter.channels.includes(order.channel_id))continue;
  let routed=packing;if(t.purpose==='kitchen'&&(filter.products?.length||filter.categories?.length||filter.station)){
@@ -110,3 +111,8 @@ export function revisePacking(db,order,actor){const row=db.prepare('SELECT snaps
  db.prepare("UPDATE print_jobs SET status='uncertain',last_error='Order changed during printing. Review old labels.' WHERE order_id=? AND status='printing'").run(order.id);
  audit(db,location(db),actor,'packing.revised',{orderId:order.id,revision:snapshot.revision,voidUnits:snapshot.voidUnits.map(u=>u.id)});enqueuePrint(db,order,'order.revised',actor);
 }
+
+export const printPurposes=['kitchen','customer','cashier'];
+export const defaultPrintPolicy=()=>({auto:{kitchen:false,customer:false,cashier:false},manual:{kitchen:true,customer:true,cashier:true},printerAssignments:{kitchen:null,customer:null,cashier:null}});
+export function readPrintPolicy(db,loc=location(db)){const row=db.prepare('SELECT config FROM print_policies WHERE location_id=?').get(loc);return row?JSON.parse(row.config):defaultPrintPolicy();}
+export function validatePrintPolicy(input,db,loc=location(db)){const config=defaultPrintPolicy();for(const type of printPurposes){config.auto[type]=input?.auto?.[type]===true;config.manual[type]=input?.manual?.[type]!==false;const printer=input?.printerAssignments?.[type]||null;if(printer&&!db.prepare('SELECT 1 FROM printer_devices WHERE id=? AND location_id=? AND revoked=0').get(printer,loc))fail(400,'Choose a valid printer for '+type);config.printerAssignments[type]=printer;}return config;}

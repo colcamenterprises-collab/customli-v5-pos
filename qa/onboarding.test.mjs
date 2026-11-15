@@ -33,7 +33,7 @@ assert.equal(call(db,'/onboarding/preview','POST',account()).result.suggestions.
 assert.equal(call(db,'/onboarding/apply','POST',account(),manager).status,403);
 assert.equal(call(db,'/onboarding/apply','POST',account()).status,200);
 const print=templates(db,location(db));
-assert.equal(print.length,7);
+assert.equal(print.length,8);
 assert(print.every(t=>t.version===2&&t.config.businessName==='Noodle House'&&t.config.address==='99 Example Road, Phuket'));
 assert.equal(call(db,'/onboarding/apply','POST',account()).result.changed,false);
 assert.equal(db.prepare('SELECT count(*) AS n FROM restaurant_setup_events').get().n,1);

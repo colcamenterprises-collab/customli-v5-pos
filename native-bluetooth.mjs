@@ -13,14 +13,14 @@ export async function scanPrinters(){if(!plugin())throw Error('Open Customli V5 
 export async function pairPrinter(address){if(!plugin())throw Error('Open Customli V5 POS Android app to pair printers.');if(!plugin().pairPrinter)throw Error('The V5 Android app needs an update to pair new devices.');return plugin().pairPrinter({address})}
 export async function listPairedPrinters(){if(!plugin())return [];return (await plugin().listPrinters()).printers||[]}
 export async function sendTestPrint(printer=readPrinter()){if(!plugin())throw Error('Bluetooth printing requires the Customli V5 Android app.');if(!printer)throw Error('Find and connect a Bluetooth printer first.');return printQueue().run({receiptId:'test',printer,purpose:'test'},async()=>{try{await plugin().connect({address:printer.address});await plugin().printTest()}finally{await plugin().disconnect().catch(()=>{})}})}
-export async function printPaidReceipt(request,receipt,printer=readPrinter()){
+export async function printPaidReceipt(request,receipt,printer=readPrinter(),purpose='customer'){
  if(!plugin())throw Error('Bluetooth printing requires the Customli V5 Android app.');
  if(!printer)throw Error('Connect a Bluetooth printer first.');
  if(!receipt?.id)throw Error('Choose a saved paid receipt.');
  // Server renders exactly the saved Receipt Studio raster; no second text-only receipt layout.
- const payload=await request('/print/native-receipt','POST',{orderId:receipt.id,paperWidth:printer.width});
+ const payload=await request('/print/native-receipt','POST',{orderId:receipt.id,paperWidth:printer.width,purpose});
  if(payload.format!=='escpos'||!payload.base64)throw Error('The receipt could not be prepared.');
- const result=await printQueue().run({receiptId:receipt.id,receiptNumber:payload.receiptNumber,printer},async()=>{
+ const result=await printQueue().run({receiptId:receipt.id,receiptNumber:payload.receiptNumber,printer,purpose},async()=>{
   try{await plugin().connect({address:printer.address});await plugin().printRaw({base64:payload.base64})}finally{await plugin().disconnect().catch(()=>{})}
  });
  return {...result,receiptNumber:payload.receiptNumber};
