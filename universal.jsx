@@ -33,9 +33,15 @@ function CustomerDisplay({token,device}){
   </>}
  </main>;
 }
+const appModes=['POS','KDS','CDS'];
+const modesFor=location=>Array.isArray(location?.modes)?appModes.filter(mode=>location.modes.includes(mode))
+ : appModes.filter(mode=>mode!=='KDS'||['Owner','Manager'].includes(location?.role));
 const clearKitchenCache=()=>{for(const key of Object.keys(localStorage))if(/^customli-kds-(?:production|test)-.*(?:board-cache|pending-actions|event-cursor)$/.test(key))localStorage.removeItem(key);};
 function App(){
  const [screen,setScreen]=useState('loading'),[saved,setSaved]=useState(null),[locations,setLocations]=useState([]),[locationId,setLocationId]=useState(''),[mode,setMode]=useState('POS'),[devices,setDevices]=useState([]),[posDeviceId,setPosDeviceId]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reconnecting,setReconnecting]=useState(false),[nearby,setNearby]=useState([]);
+ const selectedLocation=locations.find(x=>x.id===locationId);
+ const availableModes=selectedLocation?modesFor(selectedLocation):appModes;
+ const changeLocation=id=>{setLocationId(id);setPosDeviceId('');const modes=modesFor(locations.find(x=>x.id===id));setMode(current=>modes.includes(current)?current:modes[0]||'POS');};
  const [showDeviceMenu,setShowDeviceMenu]=useState(false);
  const [launcherTab,setLauncherTab]=useState('home');
  const openDashboard=async()=>{setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openDashboard()}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
@@ -75,13 +81,14 @@ function App(){
   sessionExpiresAt.current=login.expiresAt;
   setLocations(choices);
   setLocationId(choices.length===1?choices[0].id:'');
+  if(choices.length===1)setMode(modesFor(choices[0])[0]||'POS');
   setError('');
   setScreen('setup');
  };
  const choose=async e=>{e.preventDefault();if(busy)return;setBusy(true);setError('');try{
   const location=locations.find(x=>x.id===locationId);
   if(!location)throw Error('Choose a restaurant');
-  if(mode==='KDS'&&!['Owner','Manager'].includes(location.role))throw Error('Kitchen access requires Manager permission');
+  if(!modesFor(location).includes(mode))throw Error('This app is not assigned to you at this restaurant');
   if(mode==='CDS'&&!devices.some(x=>x.id===posDeviceId))throw Error('Choose a point of sale');
   const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?posDeviceId:null};
   await open({token:accountToken.current,accountId:accountId.current,expiresAt:sessionExpiresAt.current,device});accountToken.current='';
@@ -90,7 +97,8 @@ function App(){
   const choices=await request(AUTH+'/locations',saved.token);
   accountToken.current=saved.token;accountId.current=saved.accountId;
   sessionExpiresAt.current=saved.expiresAt;setLocations(choices);
-  setLocationId(saved.device.locationId);setMode(saved.device.mode);setScreen('setup');
+  const location=choices.find(x=>x.id===saved.device.locationId)||(choices.length===1?choices[0]:null);
+  const modes=modesFor(location);setLocationId(location?.id||'');setMode(modes.includes(saved.device.mode)?saved.device.mode:modes[0]||'POS');setScreen('setup');
  }catch(error){if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');else setError(error.message);}finally{setBusy(false);}};
  const logout=async()=>{setBusy(true);setError('');try{await request(AUTH+'/logout',saved.token,{});await revoke('Signed out.');}catch(error){setError('Connect to sign out of your account.');}finally{setBusy(false);}};
  const retry=async()=>{setBusy(true);setError('');try{await request(AUTH+'/me',saved.token);await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
@@ -99,8 +107,8 @@ function App(){
  if(screen==='setup')return <main className={styles.launcher}>
  <aside className={styles.launchSidebar}><div className={styles.launchBrand}><img src="./brand/customli-login-logo.svg" alt="Customli"/><strong>Customli</strong></div><nav aria-label="Application navigation"><button className={launcherTab==='home'?styles.selected:''} onClick={()=>setLauncherTab('home')}>Home</button><button onClick={openDashboard}>Dashboard <span>↗</span></button><button className={launcherTab==='printer'?styles.selected:''} onClick={()=>setLauncherTab('printer')}>Printer setup</button><button onClick={openSupport}>Support <span>↗</span></button></nav><div className={styles.launchFooter}><button onClick={logout} disabled={busy}>Sign out</button><small>Customli {VERSION}</small></div></aside>
  <section className={styles.launchContent}><header className={styles.launchHeader}><div><span className={styles.eyebrow}>YOUR WORKSPACE</span><h1>{launcherTab==='home'?'Welcome to Customli':'Printer setup'}</h1><p>{launcherTab==='home'?'Select a restaurant and open the application for this device.':'Connect and manage your receipt printers from the POS settings.'}</p></div><img src="./brand/customli-login-logo.svg" alt=""/></header>
- {launcherTab==='home'?<><div className={styles.launchTiles}><button type="button" onClick={openDashboard}><strong>Dashboard</strong><span>Reporting, menus and restaurant settings</span><em>Open in browser ↗</em></button><button type="button" onClick={()=>setMode('POS')} className={mode==='POS'?styles.activeTile:''}><strong>Point of sale</strong><span>Orders, payments and receipts</span><em>Choose POS</em></button><button type="button" onClick={()=>setMode('KDS')} className={mode==='KDS'?styles.activeTile:''}><strong>Kitchen display</strong><span>Live kitchen order management</span><em>Choose KDS</em></button><button type="button" onClick={()=>setMode('CDS')} className={mode==='CDS'?styles.activeTile:''}><strong>Customer display</strong><span>Customer-facing order status</span><em>Choose CDS</em></button></div>
- <form className={styles.launchForm} onSubmit={choose}><h2>Open on this device</h2><div className={styles.launchFields}><label>Restaurant<Select aria-label="Restaurant" value={locationId} onChange={e=>setLocationId(e.target.value)} required><option value="">Choose restaurant</option>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</Select></label><label>Application<Select aria-label="Use this device for" value={mode} onChange={e=>setMode(e.target.value)}><option value="POS">Point of sale</option><option value="KDS">Kitchen display</option><option value="CDS">Customer display</option></Select></label>{mode==='CDS'&&<label>Point of sale<Select aria-label="Point of sale" value={posDeviceId} onChange={e=>setPosDeviceId(e.target.value)} required><option value="">Choose point of sale</option>{devices.map(x=><option key={x.id} value={x.id}>{x.id}</option>)}</Select></label>}</div><button className={styles.launchPrimary} disabled={busy||!locationId||(mode==='CDS'&&!posDeviceId)}>{busy?'Opening…':'Open application →'}</button></form></>:<div className={styles.launchForm}><h2>Receipt printers</h2><p>Open Point of sale, then choose Settings → Bluetooth printer to discover, test and assign a printer.</p><button className={styles.launchPrimary} onClick={()=>{setLauncherTab('home');setMode('POS')}}>Set up POS printer →</button></div>}
+ {launcherTab==='home'?<><div className={styles.launchTiles}><button type="button" onClick={openDashboard}><strong>Dashboard</strong><span>Reporting, menus and restaurant settings</span><em>Open in browser ↗</em></button><button type="button" disabled={!availableModes.includes('POS')} onClick={()=>setMode('POS')} className={mode==='POS'?styles.activeTile:''}><strong>Point of sale</strong><span>Orders, payments and receipts</span><em>Choose POS</em></button><button type="button" disabled={!availableModes.includes('KDS')} onClick={()=>setMode('KDS')} className={mode==='KDS'?styles.activeTile:''}><strong>Kitchen display</strong><span>Live kitchen order management</span><em>Choose KDS</em></button><button type="button" disabled={!availableModes.includes('CDS')} onClick={()=>setMode('CDS')} className={mode==='CDS'?styles.activeTile:''}><strong>Customer display</strong><span>Customer-facing order status</span><em>Choose CDS</em></button></div>
+ <form className={styles.launchForm} onSubmit={choose}><h2>Open on this device</h2><div className={styles.launchFields}><label>Restaurant<Select aria-label="Restaurant" value={locationId} onChange={e=>changeLocation(e.target.value)} required><option value="">Choose restaurant</option>{locations.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</Select></label><label>Application<Select aria-label="Use this device for" value={mode} onChange={e=>setMode(e.target.value)}><option value="POS" disabled={!availableModes.includes('POS')}>Point of sale</option><option value="KDS" disabled={!availableModes.includes('KDS')}>Kitchen display</option><option value="CDS" disabled={!availableModes.includes('CDS')}>Customer display</option></Select></label>{mode==='CDS'&&<label>Point of sale<Select aria-label="Point of sale" value={posDeviceId} onChange={e=>setPosDeviceId(e.target.value)} required><option value="">Choose point of sale</option>{devices.map(x=><option key={x.id} value={x.id}>{x.id}</option>)}</Select></label>}</div><button className={styles.launchPrimary} disabled={busy||!locationId||!availableModes.includes(mode)||(mode==='CDS'&&!posDeviceId)}>{busy?'Opening…':'Open application →'}</button></form></>:<div className={styles.launchForm}><h2>Receipt printers</h2><p>Open Point of sale, then choose Settings → Bluetooth printer to discover, test and assign a printer.</p><button className={styles.launchPrimary} onClick={()=>{setLauncherTab('home');setMode('POS')}}>Set up POS printer →</button></div>}
  {error&&<p className={styles.error} role="alert">{error}</p>}</section></main>;
  return <main className={styles.setup}><section className={styles.card}><img className={styles.logo} src="./brand/customli-login-logo.svg" alt="Customli"/>{screen==='loading'?<p>Opening Customli…</p>:screen==='connection'?<><h1>Connect to continue</h1><button disabled={busy} onClick={retry}>{busy?'Reconnecting…':'Try again'}</button></>:<h1>Android setup required</h1>}{error&&<p className={styles.error} role="alert">{error}</p>}<small>Customli {VERSION}</small></section></main>;
 }

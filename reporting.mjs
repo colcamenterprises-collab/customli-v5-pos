@@ -75,7 +75,7 @@ const reports = new Set(['overview','items','transactions','discounts','refunds'
 export function handleReporting(url, method, res, db, user) {
   const p = url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');
   if (!p.startsWith('/reports')) return false;
-  if (user.role !== 'Owner') { headers(res,403,{message:'Owner access is required to view financial reports.'}); return true; }
+  if (!user.permissions && user.role !== 'Owner') { headers(res,403,{message:'Owner access is required to view financial reports.'}); return true; }
   if (method !== 'GET') { headers(res,405,{message:'This report is read-only.'}); return true; }
   try {
     const filter=bounds(url.searchParams), w=whereOrders(filter), args=w.args;
