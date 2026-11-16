@@ -4,10 +4,13 @@ export function installApprovals(db){
 }
 export function approvalRoutes({db,p,method,b,user,send,res,bad,manager,getShift,authorize}){
  const now=()=>new Date().toISOString();const isApprover=['Owner','Manager'].includes(user.role);
+ const canProcess=kind=>!user.permissions||user.permissions.has(kind==='refund'?'pos.refund.process':'pos.payment.change');
+ const canRequest=kind=>canProcess(kind)||(kind==='refund'&&user.permissions?.has('pos.refund.request'));
  const record=(id)=>db.prepare('SELECT r.*,a.username AS requester_name,z.username AS approver_name FROM approval_requests r JOIN users a ON a.id=r.requested_by LEFT JOIN users z ON z.id=r.approved_by WHERE r.id=?').get(id);
- if(p==='/approvals'&&method==='GET'){const rows=db.prepare('SELECT id FROM approval_requests ORDER BY created_at DESC LIMIT 200').all().map(x=>record(x.id));return send(res,200,rows)}
+ if(p==='/approvals'&&method==='GET'){const rows=db.prepare('SELECT id FROM approval_requests ORDER BY created_at DESC LIMIT 200').all().map(x=>record(x.id)).filter(row=>canProcess(row.kind)||(row.requested_by===user.id&&canRequest(row.kind)));return send(res,200,rows)}
  if(p==='/approvals'&&method==='POST'){
   if(!['refund','payment_correction'].includes(b.kind))bad(400,'Invalid approval type');
+  if(!canRequest(b.kind))bad(403,'This approval type is not assigned to your account');
   const order=db.prepare('SELECT * FROM orders WHERE id=?').get(String(b.orderId||''));if(!order)bad(404,'Receipt not found');
   if(order.shift_id!==getShift()?.id)bad(409,'The original shift must be open to request a refund or correction');
   const reason=String(b.reason||'').trim();if(!reason||reason.length>500)bad(400,'Enter a reason');
@@ -25,6 +28,7 @@ export function approvalRoutes({db,p,method,b,user,send,res,bad,manager,getShift
  const match=p.match(/^\/approvals\/([a-f0-9-]+)\/(approve|decline|complete|cancel)$/);
  if(match&&method==='POST'){
   const [_,id,action]=match;const r=record(id);if(!r)bad(404,'Approval request not found');
+  if(!canProcess(r.kind)&&!(action==='cancel'&&r.requested_by===user.id&&canRequest(r.kind)))bad(403,'This approval type is not assigned to your account');
   if(action==='cancel'){if(r.requested_by!==user.id&&!isApprover)bad(403,'Not permitted');if(r.status!=='pending')bad(409,'Only pending requests can be cancelled');db.prepare("UPDATE approval_requests SET status='cancelled',decided_at=? WHERE id=?").run(now(),id);return send(res,200,record(id))}
   if(action==='approve'||action==='decline'){
    if(!isApprover)bad(403,'Manager or Owner required');if(r.status!=='pending')bad(409,'Request already decided');if(r.expires_at<now())bad(409,'Request has expired');
