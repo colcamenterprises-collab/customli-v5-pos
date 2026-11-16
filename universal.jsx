@@ -7,7 +7,7 @@ import styles from './universal.module.css';
 
 const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
 const AUTH=ORIGIN+'/v5-auth/api/auth';
-const VERSION='1.1.8';
+const VERSION='1.1.9';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){
