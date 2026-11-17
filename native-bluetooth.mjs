@@ -6,8 +6,16 @@ export const nativePrintJobs=()=>printQueue().jobs();
 // The browser cannot use Bluetooth RFCOMM. Never replace the device API with a fake print queue.
 const plugin=()=>{const cap=typeof window!=='undefined'?window.Capacitor:null;return cap?.isNativePlatform?.()&&cap?.Plugins?.ThermalPrinter||null};
 export function bluetoothAvailable(){return Boolean(plugin())}
-const printerKey=()=>{try{const id=sessionStorage.getItem('customli-device-id'),loc=sessionStorage.getItem('customli-location-id');return 'customli.v5.bluetooth.printer'+(id&&loc?'.'+id+'@'+loc:'')}catch{return 'customli.v5.bluetooth.printer'}};
-export const readPrinter=()=>{try{const value=JSON.parse(localStorage.getItem(printerKey())||'null');return value?.address?value:null}catch{return null}};
+const legacyPrinterKey=()=>{try{const id=sessionStorage.getItem('customli-device-id'),loc=sessionStorage.getItem('customli-location-id');return 'customli.v5.bluetooth.printer'+(id&&loc?'.'+id+'@'+loc:'')}catch{return 'customli.v5.bluetooth.printer'}};
+const printerKey=()=>{try{const id=sessionStorage.getItem('customli-installation-id'),loc=sessionStorage.getItem('customli-location-id');return id&&loc?'customli.v5.bluetooth.printer.tablet.'+id+'@'+loc:legacyPrinterKey()}catch{return legacyPrinterKey()}};
+export const readPrinter=()=>{try{
+ const key=printerKey(),old=legacyPrinterKey();
+ const value=JSON.parse(localStorage.getItem(key)||localStorage.getItem(old)||'null');
+ if(!value?.address)return null;
+ if(key!==old&&!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(value));
+ return value;
+}catch{return null}};
+export const syncPrinter=(request,printer)=>request('/print/native-printer','POST',{name:printer.name,width:printer.width});
 export function savePrinter(printer){if(!printer?.address||!/^[A-F0-9:]{17}$/i.test(printer.address)||![58,80].includes(printer.width))throw Error('Choose a Bluetooth printer and 58 or 80 mm paper.');const safe={address:printer.address.toUpperCase(),name:String(printer.name||'Bluetooth printer').slice(0,90),width:printer.width};localStorage.setItem(printerKey(),JSON.stringify(safe));return safe}
 export async function scanPrinters(){if(!plugin())throw Error('Open Customli V5 POS Android app to find Bluetooth printers.');const r=await (plugin().scanPrinters?plugin().scanPrinters():plugin().listPrinters());return r.printers||[]}
 export async function pairPrinter(address){if(!plugin())throw Error('Open Customli V5 POS Android app to pair printers.');if(!plugin().pairPrinter)throw Error('The V5 Android app needs an update to pair new devices.');return plugin().pairPrinter({address})}

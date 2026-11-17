@@ -74,7 +74,7 @@ const auth=async req=>{
      !identity.locations?.some(location=>location.id===requestedLocation&&location.tenantId===requiredTenant))return null;
   if(permissions&&!permissions.has('applications.'+mode.toLowerCase()))bad(403,'This app is not assigned to your account');
   operationalDevice={id:'account:'+identity.id+':'+installation,tenantId:requiredTenant,
-   locationId:requestedLocation,mode,posDeviceId:null};
+   locationId:requestedLocation,installationId:installation,mode,posDeviceId:null};
   if(mode==='CDS'){
    const posId=req.headers['x-customli-pos-device'];
    if(typeof posId==='string'&&posId){

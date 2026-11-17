@@ -77,7 +77,7 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
     return (read && pos) || (dashboard && has('administration.business'));
   }
   if (path.startsWith('/print/')) {
-    const checkoutPrint = ['/print/native-receipt', '/print/policy', '/print/payment-request', '/print/order'].includes(path);
+    const checkoutPrint = ['/print/native-receipt', '/print/native-printer', '/print/policy', '/print/payment-request', '/print/order'].includes(path);
     return (pos && checkoutPrint && (path !== '/print/policy' || read)) || has('administration.printers');
   }
   if (path.startsWith('/users')) return dashboard && has('administration.staff');

@@ -36,6 +36,18 @@ public class DeviceIdentityPlugin extends Plugin {
         return (SecretKey) store.getKey(ALIAS, null);
     }
     @PluginMethod
+    public void consumeLaunchAction(PluginCall call) {
+        android.content.Intent intent = getActivity().getIntent();
+        android.net.Uri uri = intent == null ? null : intent.getData();
+        JSObject result = new JSObject();
+        if (uri != null && "customli".equals(uri.getScheme()) && "open".equals(uri.getHost()) && "/printers".equals(uri.getPath())) {
+            result.put("action", "printers");
+            intent.setData(null);
+        }
+        call.resolve(result);
+    }
+
+    @PluginMethod
     public synchronized void read(PluginCall call) {
         try {
             SharedPreferences prefs = preferences();

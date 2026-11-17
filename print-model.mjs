@@ -32,6 +32,7 @@ export function validateTemplate(t){
  return out;
 }
 export function migratePrint(db){db.exec(`
+ CREATE TABLE IF NOT EXISTS native_printers(location_id TEXT NOT NULL,installation_id TEXT NOT NULL,name TEXT NOT NULL,width INTEGER NOT NULL CHECK(width IN (58,80)),updated_at TEXT NOT NULL,actor_id TEXT NOT NULL,PRIMARY KEY(location_id,installation_id));
  CREATE TABLE IF NOT EXISTS print_location(id TEXT PRIMARY KEY);
  CREATE TABLE IF NOT EXISTS print_policies(location_id TEXT PRIMARY KEY,config TEXT NOT NULL,updated_at TEXT NOT NULL,actor_id TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS receipt_templates(id TEXT PRIMARY KEY,location_id TEXT NOT NULL,purpose TEXT NOT NULL,name TEXT NOT NULL,version INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1);
