@@ -35,21 +35,20 @@ try{
     printRaw:async()=>({ok:true})
   }}};
  },fixture.token);
+ await ctx.route('**/print/native-printer',route=>route.fulfill({json:{saved:true}}));
  const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(base);await page.getByRole('button',{name:'Printer settings'}).waitFor({timeout:10000});
  await page.getByRole('button',{name:'Printer settings'}).click();
  const dialog=page.getByRole('dialog',{name:'Bluetooth printer'});await dialog.waitFor();
  await dialog.getByText('Printer ABC').first().waitFor();
  await dialog.getByRole('button',{name:/Printer ABC/}).click();
- await dialog.getByRole('button',{name:'Connect'}).click();
- await dialog.getByText('Printer connected. Send a test print before saving.').waitFor();
- await dialog.getByRole('button',{name:'Test print'}).click();
+ await dialog.getByRole('button',{name:'Connect and test'}).click();
  await dialog.getByText('Test sent. Check').waitFor();
  await dialog.getByRole('checkbox',{name:'Paper printed correctly'}).check();
  await dialog.getByRole('button',{name:'Save printer'}).click();
  await dialog.getByText('Printer saved.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('customli.v5.bluetooth.printer')).width),80);
- assert.deepEqual(await page.evaluate(()=>window.__bluetoothCalls),['connect:AA:BB:CC:DD:EE:FF','disconnect','connect:AA:BB:CC:DD:EE:FF','test','disconnect']);
+ assert.deepEqual(await page.evaluate(()=>window.__bluetoothCalls),['connect:AA:BB:CC:DD:EE:FF','test','disconnect']);
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  assert.deepEqual(errors,[]);
  console.log('PASS Android mocked UI: find → connect → test → paper confirmation → save → release socket; 390px responsive, no page errors');

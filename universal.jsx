@@ -7,7 +7,7 @@ import styles from './universal.module.css';
 
 const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
 const AUTH=ORIGIN+'/v5-auth/api/auth';
-const VERSION='1.1.9';
+const VERSION='1.2.0';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){
@@ -42,6 +42,22 @@ function App(){
  const selectedLocation=locations.find(x=>x.id===locationId);
  const availableModes=selectedLocation?modesFor(selectedLocation):appModes;
  const changeLocation=id=>{setLocationId(id);setPosDeviceId('');const modes=modesFor(locations.find(x=>x.id===id));setMode(current=>modes.includes(current)?current:modes[0]||'POS');};
+ const [printerAction,setPrinterAction]=useState(false);
+ useEffect(()=>{
+  const readAction=async()=>{const action=await deviceStore()?.consumeLaunchAction?.();if(action?.action==='printers')setPrinterAction(true)};
+  readAction().catch(()=>{});
+  window.addEventListener('customli:launch',readAction);
+  return()=>window.removeEventListener('customli:launch',readAction);
+ },[]);
+ useEffect(()=>{
+  if(printerAction&&screen==='mode'&&saved?.device.mode==='POS'){
+   const frame=document.querySelector('iframe[title="Point of sale"]');
+   const send=()=>frame?.contentWindow?.postMessage({type:'customli:printer-setup'},window.location.origin);
+   const ready=e=>{if(e.source===frame?.contentWindow&&e.origin===window.location.origin&&e.data?.type==='customli:printer-ready')send()};
+   window.addEventListener('message',ready);send();
+   return()=>window.removeEventListener('message',ready);
+  }
+ },[printerAction,screen,saved?.device.mode]);
  const [showDeviceMenu,setShowDeviceMenu]=useState(false);
  const [launcherTab,setLauncherTab]=useState('home');
  const openDashboard=async()=>{setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openDashboard()}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
@@ -102,7 +118,7 @@ function App(){
  }catch(error){if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');else setError(error.message);}finally{setBusy(false);}};
  const logout=async()=>{setBusy(true);setError('');try{await request(AUTH+'/logout',saved.token,{});await revoke('Signed out.');}catch(error){setError('Connect to sign out of your account.');}finally{setBusy(false);}};
  const retry=async()=>{setBusy(true);setError('');try{await request(AUTH+'/me',saved.token);await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
- if(screen==='mode'&&saved){const device=saved.device;return <div className={styles.operating}><div className={styles.deviceMenu}><button type="button" aria-label="Device settings" aria-expanded={showDeviceMenu} onClick={()=>setShowDeviceMenu(v=>!v)}>⚙</button>{showDeviceMenu&&<nav aria-label="Device settings"><button onClick={switchApp} disabled={busy}>Home / Switch app</button><button onClick={openDashboard} disabled={busy}>Dashboard ↗</button><button onClick={logout} disabled={busy}>Sign out</button></nav>}</div>{nearby.length>0&&device.mode!=='CDS'&&<div className={styles.discovery}>{nearby.length} nearby registered {nearby.length===1?'device':'devices'}</div>}{reconnecting&&device.mode!=='CDS'&&<div className={styles.connection}>Reconnecting to Customli</div>}{device.mode==='CDS'?<CustomerDisplay token={saved.token} device={device}/>:<iframe key={device.mode+':'+(device.station||'')} title={device.mode==='POS'?'Point of sale':'Kitchen display'} src={device.mode==='POS'?'./pos/index.html':'./kds/index.html'} className={styles.frame}/>}</div>;}
+ if(screen==='mode'&&saved){const device=saved.device;return <div className={styles.operating}><div className={styles.deviceMenu}><button type="button" aria-label="Device settings" aria-expanded={showDeviceMenu} onClick={()=>setShowDeviceMenu(v=>!v)}>⚙</button>{showDeviceMenu&&<nav aria-label="Device settings">{device.mode==='POS'&&<button onClick={()=>{setPrinterAction(true);setShowDeviceMenu(false);document.querySelector('iframe[title="Point of sale"]')?.contentWindow?.postMessage({type:'customli:printer-setup'},window.location.origin)}}>Printer settings</button>}<button onClick={switchApp} disabled={busy}>Home / Switch app</button><button onClick={openDashboard} disabled={busy}>Dashboard ↗</button><button onClick={logout} disabled={busy}>Sign out</button></nav>}</div>{printerAction&&device.mode!=='POS'&&<div className={styles.connection}><button onClick={switchApp}>Choose POS for printer setup</button></div>}{nearby.length>0&&device.mode!=='CDS'&&<div className={styles.discovery}>{nearby.length} nearby registered {nearby.length===1?'device':'devices'}</div>}{reconnecting&&device.mode!=='CDS'&&<div className={styles.connection}>Reconnecting to Customli</div>}{device.mode==='CDS'?<CustomerDisplay token={saved.token} device={device}/>:<iframe key={device.mode+':'+(device.station||'')} title={device.mode==='POS'?'Point of sale':'Kitchen display'} src={device.mode==='POS'?'./pos/index.html':'./kds/index.html'} className={styles.frame}/>}</div>;}
  if(screen==='login')return <DashboardLogin onLogin={signIn} call={(path,body)=>request(AUTH+path,'',body)} sessionMessage={error}/>;
  if(screen==='setup')return <main className={styles.launcher}>
  <aside className={styles.launchSidebar}><div className={styles.launchBrand}><img src="./brand/customli-login-logo.svg" alt="Customli"/><strong>Customli</strong></div><nav aria-label="Application navigation"><button className={launcherTab==='home'?styles.selected:''} onClick={()=>setLauncherTab('home')}>Home</button><button onClick={openDashboard}>Dashboard <span>↗</span></button><button className={launcherTab==='printer'?styles.selected:''} onClick={()=>setLauncherTab('printer')}>Printer setup</button><button onClick={openSupport}>Support <span>↗</span></button></nav><div className={styles.launchFooter}><button onClick={logout} disabled={busy}>Sign out</button><small>Customli {VERSION}</small></div></aside>

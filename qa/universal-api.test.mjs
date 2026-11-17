@@ -21,6 +21,9 @@ try{
  assert.equal((await call('/me','GET',null,'wrongTenant')).status,401);assert.equal((await call('/me','GET',null,'wrongLocation')).status,401);
  ok(await call('/me','GET',null,'account','restaurant'));
  ok(await call('/me','GET',null,'account','restaurant','1234567890123456','POS'));
+ ok(await call('/print/native-printer','POST',{name:'Counter receipt printer',width:80},'account','restaurant','1234567890123456','POS'));
+ assert.equal(ok(await call('/print/state','GET',null,'account','restaurant')).nativePrinters[0].name,'Counter receipt printer');
+ assert.equal((await call('/print/native-printer','POST',{name:'Other printer',width:80},'account','restaurant','2222222222222222','CDS')).status,403);
  const terminalId='account:account-owner:1234567890123456';
  assert.equal(ok(await call('/display/terminals','GET',null,'account','restaurant','2222222222222222','CDS'))[0].id,terminalId);
  assert.equal((await call('/display','GET',null,'account','restaurant','2222222222222222','CDS',terminalId)).status,200);
