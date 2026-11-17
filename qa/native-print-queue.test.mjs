@@ -16,3 +16,19 @@ let writes=0;const failed=createNativePrintQueue({storage:{getItem:()=>null,setI
 await assert.rejects(failed.run({receiptId:'unsafe',printer},async()=>sends++),/full/);assert.equal(sends,2,'No printer bytes before durable write');assert.equal(writes,1);
 const corrupt=createNativePrintQueue({storage:{getItem:()=>'{',setItem:()=>{}},scope:()=>scope});await assert.rejects(corrupt.run({receiptId:'unsafe',printer},async()=>sends++),/could not be read/);assert.equal(sends,2);
 console.log('PASS native print jobs: durable before send, uncertainty on restart/failure, explicit reprint identity, device scope, storage failure blocks printing');
+
+let release;
+let prepared=0;
+const gate=new Promise(resolve=>release=resolve);
+const manual=queue.run({receiptId:'manual',printer},()=>gate);
+assert.equal(await queue.reserve(async()=>{prepared++;return null}),null);
+assert.equal(prepared,0,'Never claim an automatic job while a manual print owns the queue');
+release();await manual;
+let finishClaim;
+const claimGate=new Promise(resolve=>finishClaim=resolve);
+const automatic=queue.reserve(async()=>{
+ await claimGate;
+ return {meta:{receiptId:'auto',printer},send:async()=>{sends++}};
+});
+await assert.rejects(queue.run({receiptId:'other-manual',printer},async()=>{}),/already in progress/);
+finishClaim();assert.equal((await automatic).sent,true);

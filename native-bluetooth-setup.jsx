@@ -12,7 +12,7 @@ export default function NativeBluetoothSetup({onClose,request}){
   if(!device.bonded){setMessage('Confirm the Android Bluetooth pairing request on your tablet.');await pairPrinter(device.address);let ready=false;for(let i=0;i<20;i++){const paired=await listPairedPrinters();if(paired.find(p=>p.address===device.address&&p.bonded)){ready=true;break}await wait(1000)}if(!ready)throw Error('Android pairing was not completed. Confirm the pairing prompt and try again.')}
   const printer={address:device.address,name:device.name,width};
   setDraft(printer);setTested(false);setPaperConfirmed(false);
-  setMessage('Sending test print…');await sendTestPrint(printer);
+  setMessage('Sending test print…');await sendTestPrint(printer,request);
   setTested(true);setMessage('Test sent. Check the paper, then save.');
   setDevices(a=>a.map(x=>x.address===device.address?{...x,bonded:true}:x));
  }catch(e){setError(e.message);setMessage('')}finally{setBusy(false)}};

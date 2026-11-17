@@ -32,7 +32,7 @@ try{
     connect:async({address})=>{calls.push('connect:'+address);return {connected:true}},
     disconnect:async()=>{calls.push('disconnect');return {connected:false}},
     printTest:async()=>{calls.push('test');return {ok:true}},
-    printRaw:async()=>({ok:true})
+    printRaw:async()=>{calls.push('receipt');return {ok:true}}
   }}};
  },fixture.token);
  await ctx.route('**/print/native-printer',route=>route.fulfill({json:{saved:true}}));
@@ -48,7 +48,7 @@ try{
  await dialog.getByRole('button',{name:'Save printer'}).click();
  await dialog.getByText('Printer saved.',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('customli.v5.bluetooth.printer')).width),80);
- assert.deepEqual(await page.evaluate(()=>window.__bluetoothCalls),['connect:AA:BB:CC:DD:EE:FF','test','disconnect']);
+ assert.deepEqual(await page.evaluate(()=>window.__bluetoothCalls),['connect:AA:BB:CC:DD:EE:FF','receipt','disconnect']);
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  assert.deepEqual(errors,[]);
  console.log('PASS Android mocked UI: find → connect → test → paper confirmation → save → release socket; 390px responsive, no page errors');

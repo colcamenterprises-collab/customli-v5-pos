@@ -9,9 +9,22 @@ import {fail} from './print-model.mjs';
 const xml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const money=n=>'THB '+(Number(n||0)/100).toFixed(2);
 const segmenter=new Intl.Segmenter('th',{granularity:'grapheme'});
-export function wrap(text,limit){const lines=[];for(const part of String(text??'').split('\n')){let line='';for(const {segment} of segmenter.segment(part)){if([...segmenter.segment(line)].length>=limit){lines.push(line);line='';}line+=segment;}lines.push(line);}return lines;}
+export function wrap(text,limit){
+ const lines=[];
+ for(const part of String(text??'').split('\n')){
+  const symbols=Array.from(segmenter.segment(part),entry=>entry.segment);
+  while(symbols.length>limit){
+   const boundary=symbols.slice(0,limit+1).lastIndexOf(' ');
+   const end=boundary>0?boundary:limit;
+   lines.push(symbols.splice(0,end).join(''));
+   if(symbols[0]===' ')symbols.shift();
+  }
+  lines.push(symbols.join(''));
+ }
+ return lines;
+}
 export async function renderDocument(document,assets={}){
- const t=document.template,o=document.order,p=t.purpose,label=p.endsWith('label'),width=Math.round(t.width*8),font=t.fontSize,margin=16,lineHeight=Math.ceil(font*1.5),nodes=[];let y=margin;
+ const t=document.template,o=document.order,p=t.purpose,label=p.endsWith('label'),width=label?Math.round(t.width*8):(t.width===58?384:576),font=t.fontSize,margin=16,lineHeight=Math.ceil(font*1.5),nodes=[];let y=margin;
  const preset=['promotional','minimalist','editorial'].includes(t.stylePreset)?t.stylePreset:'editorial';
  const sizeFor=function(scale){return Math.max(8,Math.min(48,Math.round(font*(scale||1))))};
  const text=function(value,align,size,bold,indent,family){
@@ -56,7 +69,10 @@ export async function renderDocument(document,assets={}){
  const externalRef=String(o.partner_reference||'').trim(),internalRef=String(o.receipt_number==null?'':o.receipt_number).trim();
  const delivery=!!externalRef;
  if(t.showOrderType!==false)centered(delivery?String(o.channel_id||'DELIVERY').toUpperCase()+' ORDER':p==='payment'?'PAYMENT REQUEST':p==='cashier'?'CASHIER COPY':p==='summary_label'?'ORDER SUMMARY':p==='package_label'?'PACKAGE LABEL':'ORDER NUMBER',.9,true);
- centered(externalRef||internalRef||'—',preset==='minimalist'?2.05:2.5,true);
+ const receiptReference=externalRef||internalRef||'—';
+ const referenceSize=Math.max(16,Math.min(sizeFor(preset==='minimalist'?2.05:2.5),Math.floor((width-margin*2)/(Array.from(segmenter.segment(receiptReference)).length*.68))));
+ text(receiptReference,receipt?'center':'left',referenceSize,true);
+
  if(externalRef&&internalRef&&t.showInternalReceiptNumber!==false)centered('Receipt #'+internalRef,.82,false);
  if(p==='payment')centered('UNPAID',1.05,true);
  centered(o.channel_id||o.mode||'',.82,false);
@@ -75,7 +91,16 @@ export async function renderDocument(document,assets={}){
    const mods=t.showModifiers?(item.modifiers||[]):[];
    const modTotal=mods.reduce((sum,m)=>sum+Number(m.priceMinor==null?(m.price||0):m.priceMinor)*Number(m.quantity||1),0);
    const gross=Number(item.price||0)*Number(item.quantity||1),base=Math.max(0,gross-modTotal*Number(item.quantity||1));
-   const row=function(name,price,indent,bold){y+=lineHeight*1.35;nodes.push('<text x="'+(margin+(indent||0))+'" y="'+y+'" font-size="'+font+'" font-weight="'+(bold?700:500)+'">'+xml(name)+'</text><text x="'+(width-margin)+'" y="'+y+'" font-size="'+font+'" font-weight="'+(bold?700:400)+'" text-anchor="end">'+xml(price)+'</text>')};
+   const row=function(name,price,indent=0,bold=false){
+    const amountSpace=price?Math.max(110,String(price).length*font*.65+16):0;
+    const limit=Math.max(5,Math.floor((width-margin*2-indent-amountSpace)/(font*.68)));
+    const lines=wrap(name,limit);
+    for(let index=0;index<lines.length;index++){
+     y+=lineHeight*1.25;
+     nodes.push('<text x="'+(margin+indent)+'" y="'+y+'" font-size="'+font+'" font-weight="'+(bold?700:500)+'">'+xml(lines[index])+'</text>');
+     if(index===0&&price)nodes.push('<text x="'+(width-margin)+'" y="'+y+'" font-size="'+font+'" font-weight="'+(bold?700:400)+'" text-anchor="end">'+xml(price)+'</text>');
+    }
+   };
    row(Number(item.quantity||1)+' × '+item.name,money(base),0,true);
    for(const m of mods){const q=Number(m.quantity||1),price=Number(m.priceMinor==null?(m.price||0):m.priceMinor)*q*Number(item.quantity||1);row('+ '+m.name+(q>1?' ×'+q:''),price?money(price):'',12,false);}
    if(item.instructions)centered(item.instructions,.82,false);
@@ -115,6 +140,20 @@ export async function encodeDocument(document,profile,assets={}){
  if(document.template.width>profile.width||document.template.purpose.endsWith('label')&&document.template.height!==profile.height)fail(409,'Template dimensions do not match this printer media.');
  const raw=await sharp(r.png).resize(width,height).flatten({background:'#fff'}).greyscale().threshold(160).raw().toBuffer();const row=width/8,bits=Buffer.alloc(row*height);
  for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(raw[y*width+x]<128)bits[y*row+(x>>3)]|=128>>(x%8);
+ if(profile.language==='escpos'&&profile.transport==='bluetooth'){
+  if(document.template.purpose.endsWith('label'))fail(409,'Use a label printer for adhesive labels.');
+  const chunks=[Buffer.from([27,64,27,97,0,27,51,24])];
+  for(let top=0;top<height;top+=24){
+   const columns=Buffer.alloc(width*3);
+   for(let x=0;x<width;x++)for(let bit=0;bit<24&&top+bit<height;bit++){
+    if(raw[(top+bit)*width+x]<128)columns[x*3+(bit>>3)]|=128>>(bit%8);
+   }
+   chunks.push(Buffer.from([27,42,33,width&255,width>>8]),columns,Buffer.from([10]));
+  }
+  chunks.push(Buffer.from([27,50,10,10]));
+  if(profile.cutter)chunks.push(Buffer.from([29,86,0]));
+  return Buffer.concat(chunks);
+ }
  if(profile.language==='escpos'){if(document.template.purpose.endsWith('label'))fail(409,'Use a label printer for adhesive labels.');const chunks=[Buffer.from([27,64])];for(let y=0;y<height;y+=256){const h=Math.min(256,height-y);chunks.push(Buffer.from([29,118,48,0,row%256,row>>8,h%256,h>>8]),bits.subarray(y*row,(y+h)*row));}chunks.push(Buffer.from([10,10]));if(profile.cutter)chunks.push(Buffer.from([29,86,0]));return Buffer.concat(chunks);}
  if(!document.template.purpose.endsWith('label'))fail(409,'Use a receipt printer for this document.');
  if(profile.language==='zpl')return Buffer.from(`^XA^PW${width}^LL${height}^FO0,0^GFA,${bits.length},${bits.length},${row},${bits.toString('hex').toUpperCase()}^FS^XZ`);
