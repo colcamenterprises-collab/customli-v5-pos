@@ -10,8 +10,8 @@ test('receipt styles render centered receipt identity and preserve modifier tota
   const template={...defaults('customer'),width,stylePreset,businessName:'Smash Brothers Burgers',address:'Rawai, Phuket',header:'Enjoy your meal',footer:'Thank you — see you soon'};
   const result=await renderDocument({template,order,packing:simplePacking(order),packageCount:2});
   const text=result.svg.replace(/<\/text>/g,' </text>');
-  assert(result.png.length>1000);assert.match(text,/GRAB-ORDER-1234/);assert.match(text,/56789|12345678|GRAB-ORDER-1234/);assert.match(text,/Receipt #4821/);assert.match(text,/Smash Brothers Burgers/);assert.match(text,/Extra cheese/);assert.match(text,/THB 20\.00/);assert.match(text,/THB 260\.00/);assert.match(text,/Item discounts/);assert.match(text,/Order discount/);assert.match(text,/THANK YOU|Thank you/);
-  assert.equal(result.width,width*8);assert(result.height>500);
+  assert(result.png.length>1000);assert.match(text,/GRAB-ORDER-1234/);assert.match(text,/56789|12345678|GRAB-ORDER-1234/);assert.match(text,/Receipt #4821/);assert.match(text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' '),/Smash Brothers Burgers/);assert.match(text,/Extra cheese/);assert.match(text,/THB 20\.00/);assert.match(text,/THB 260\.00/);assert.match(text,/Item discounts/);assert.match(text,/Order discount/);assert.match(text,/THANK YOU|Thank you/);
+  assert.equal(result.width,width===58?384:576);assert(result.height>500);
  }
 });
 

@@ -32,6 +32,8 @@ export function validateTemplate(t){
  return out;
 }
 export function migratePrint(db){db.exec(`
+ CREATE TABLE IF NOT EXISTS native_print_owner(location_id TEXT PRIMARY KEY,installation_id TEXT NOT NULL,last_seen TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS native_auto_jobs(id TEXT PRIMARY KEY,location_id TEXT NOT NULL,order_id TEXT NOT NULL,purpose TEXT NOT NULL,snapshot TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',installation_id TEXT,lease TEXT,started_at TEXT,created_at TEXT NOT NULL,UNIQUE(location_id,order_id,purpose));
  CREATE TABLE IF NOT EXISTS native_printers(location_id TEXT NOT NULL,installation_id TEXT NOT NULL,name TEXT NOT NULL,width INTEGER NOT NULL CHECK(width IN (58,80)),updated_at TEXT NOT NULL,actor_id TEXT NOT NULL,PRIMARY KEY(location_id,installation_id));
  CREATE TABLE IF NOT EXISTS print_location(id TEXT PRIMARY KEY);
  CREATE TABLE IF NOT EXISTS print_policies(location_id TEXT PRIMARY KEY,config TEXT NOT NULL,updated_at TEXT NOT NULL,actor_id TEXT NOT NULL);
@@ -92,6 +94,15 @@ export function enqueuePrint(db,order,event='sale.completed',actor='system',even
  const existing=db.prepare('SELECT id FROM print_batches WHERE event_key=?').get(key);if(existing)return existing.id;
  const batchId=randomUUID();db.prepare('INSERT INTO print_batches VALUES(?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now());
  const all=templates(db,loc),policy=readPrintPolicy(db,loc),savedRoutes=db.prepare('SELECT * FROM printer_routes WHERE location_id=? AND trigger=? AND active=1').all(loc,event),automatic=event==='sale.completed',configuredRoutes=automatic?printPurposes.filter(p=>policy.auto[p]&&policy.printerAssignments[p]).map(p=>({printer_id:policy.printerAssignments[p],template_id:all.find(t=>t.purpose===p)?.id,filters:'{}',active:1})).filter(r=>r.template_id):[],routes=[...configuredRoutes,...savedRoutes.filter(r=>!automatic||!printPurposes.includes(all.find(t=>t.id===r.template_id)?.purpose)||policy.auto[all.find(t=>t.id===r.template_id)?.purpose])],seen=new Set();
+ if(automatic&&db.prepare('SELECT 1 FROM native_print_owner WHERE location_id=?').get(loc)){
+  for(const purpose of printPurposes.filter(p=>policy.auto[p]&&!policy.printerAssignments[p])){
+   const saved=all.find(t=>t.purpose===purpose);
+   if(!saved)continue;
+   const [document]=createDocuments(order,saved.config,packing,{batchId,templateId:saved.id,templateVersion:saved.version});
+   db.prepare('INSERT OR IGNORE INTO native_auto_jobs(id,location_id,order_id,purpose,snapshot,created_at) VALUES(?,?,?,?,?,?)')
+    .run(randomUUID(),loc,order.id,purpose,JSON.stringify(document),now());
+  }
+ }
  for(const route of routes){const t=all.find(t=>t.id===route.template_id),device=db.prepare('SELECT * FROM printer_devices WHERE id=? AND location_id=? AND revoked=0').get(route.printer_id,loc);if(!t||!device)continue;
  const filter=JSON.parse(route.filters);if(filter.channels?.length&&!filter.channels.includes(order.channel_id))continue;
  let routed=packing;if(t.purpose==='kitchen'&&(filter.products?.length||filter.categories?.length||filter.station)){

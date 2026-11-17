@@ -139,7 +139,38 @@ public class ThermalPrinterPlugin extends Plugin {
   @PluginMethod public void printRaw(PluginCall call){String encoded=call.getString("base64");if(encoded==null||encoded.isEmpty()){call.reject("Print data is required");return;}try{write(call,Base64.decode(encoded,Base64.DEFAULT));}catch(Exception e){call.reject("Print data is invalid",e);}}
   @PluginMethod public void printTest(PluginCall call){write(call,("\u001b@\u001ba\u0001CUSTOMLI POS\nBLUETOOTH PRINTER TEST\n\u001ba\u0000\nESC/POS DIRECT CONNECTION\n\n\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));}
   @PluginMethod public void openCashDrawer(PluginCall call){write(call,new byte[]{0x1B,0x70,0x00,0x32,(byte)0xFA});}
-  private void write(PluginCall call,byte[] bytes){new Thread(()->{try{BluetoothSocket active=socket;if(active==null||!active.isConnected()){call.reject("Printer is not connected");return;}OutputStream output=active.getOutputStream();for(int offset=0;offset<bytes.length;offset+=512){output.write(bytes,offset,Math.min(512,bytes.length-offset));if(bytes.length>2048){try{Thread.sleep(4);}catch(InterruptedException ex){Thread.currentThread().interrupt();throw new IOException("Printer write interrupted");}}}output.flush();JSObject ret=new JSObject();ret.put("ok",true);ret.put("connectionMethod",connectionMethod);call.resolve(ret);}catch(IOException e){String method=connectionMethod;disconnectInternal();call.reject("Printer connection was lost using "+(method.isEmpty()?"Bluetooth":method)+": "+rootMessage(e),e);}catch(Exception e){disconnectInternal();call.reject("Printer command failed: "+rootMessage(e),e);}}).start();}
+  private final Object printWriteLock = new Object();
+  private void write(PluginCall call, byte[] bytes) {
+    new Thread(() -> {
+      synchronized (printWriteLock) {
+        try {
+          BluetoothSocket active = socket;
+          if (active == null || !active.isConnected()) {
+            call.reject("Printer is not connected");
+            return;
+          }
+          OutputStream output = active.getOutputStream();
+          for (int offset = 0; offset < bytes.length; offset += 256) {
+            output.write(bytes, offset, Math.min(256, bytes.length - offset));
+            output.flush();
+            try {
+              Thread.sleep(24);
+            } catch (InterruptedException error) {
+              Thread.currentThread().interrupt();
+              throw new IOException("Printer write interrupted", error);
+            }
+          }
+          JSObject result = new JSObject();
+          result.put("ok", true);
+          result.put("connectionMethod", connectionMethod);
+          call.resolve(result);
+        } catch (Exception error) {
+          disconnectInternal();
+          call.reject("Printer write interrupted. Check the paper before printing again: " + rootMessage(error), error);
+        }
+      }
+    }).start();
+  }
   private String rootMessage(Throwable error){Throwable current=error;while(current.getCause()!=null&&current.getCause()!=current)current=current.getCause();String message=current.getMessage();return message==null||message.trim().isEmpty()?current.getClass().getSimpleName():message;}
   private void disconnectInternal(){try{if(socket!=null)socket.close();}catch(Exception ignored){}socket=null;connectedDevice=null;connectionMethod="";}
   @Override protected void handleOnDestroy(){disconnectInternal();if(textToSpeech!=null){textToSpeech.stop();textToSpeech.shutdown();textToSpeech=null;}textToSpeechReady=false;super.handleOnDestroy();}

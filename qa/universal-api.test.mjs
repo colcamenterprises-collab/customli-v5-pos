@@ -49,6 +49,11 @@ try{
  staffPermissions=undefined;
  const originalShift=ok(await call('/shift/open','POST',{openingCash:0}),201).shift;
  const products=ok(await call('/products')),product=products[0];
+ const policy=ok(await call('/print/policy'));
+ ok(await call('/print/policy','POST',{...policy,auto:{customer:true,kitchen:true,cashier:false}}));
+ const autoHeaders=['account','restaurant','1234567890123456','POS'];
+ ok(await call('/print/native-jobs','POST',{action:'claim',paperWidth:80},...autoHeaders));
+
  ok(await call('/display','POST',{revision:1,items:[{productId:product.id,quantity:2}]}));
  let display=ok(await call('/display','GET',null,'cds'));assert.equal(display.total,product.price*2);assert.equal(display.items[0].name,product.name);assert.equal(display.state,'order');assert(!JSON.stringify(display).includes('owner@test'));
  assert.equal((await call('/display','POST',{revision:2,items:[]},'cds')).status,403);
@@ -62,6 +67,13 @@ try{
   assert.equal((await call('/orders','POST',{...body,received:1001})).status,409);
   if(i===0)assert.equal((await call('/orders','POST',body,'pos2')).status,403);
  }
+ const claimed=ok(await call('/print/native-jobs','POST',{action:'claim',paperWidth:80},...autoHeaders)).job;
+ assert.ok(claimed&&claimed.base64);
+ assert.equal(ok(await call('/print/native-jobs','POST',{action:'claim',paperWidth:80},...autoHeaders)).job,null);
+ assert.equal((await call('/print/native-jobs','POST',{action:'complete',id:claimed.id,lease:'wrong',status:'sent'},...autoHeaders)).status,409);
+ ok(await call('/print/native-jobs','POST',{action:'complete',id:claimed.id,lease:claimed.lease,status:'sent'},...autoHeaders));
+ ok(await call('/print/native-jobs','POST',{action:'complete',id:claimed.id,lease:claimed.lease,status:'sent'},...autoHeaders));
+ assert.notEqual(ok(await call('/print/native-jobs','POST',{action:'claim',paperWidth:80},...autoHeaders)).job.id,claimed.id);
  ok(await call('/display','POST',{revision:2,orderId:first.id}));display=ok(await call('/display','GET',null,'cds'));assert.equal(display.state,'recorded');assert.equal(display.total,first.total-first.discount_total);
  assert.equal((await call('/display','POST',{revision:3,orderId:first.id},'pos2')).status,404);
  ok(await call('/shift/close','POST',{closingCash:0}));ok(await call('/shift/open','POST',{openingCash:0}),201);const staleBody={idempotencyKey:'stale-shift',expectedShiftId:originalShift.id,expectedTotalMinor:product.price,items:[{productId:product.id,quantity:1}],paymentMethod:'Cash',received:1000};assert.equal((await call('/orders','POST',staleBody)).status,409,'Queued sale cannot move to a different shift');assert.equal(ok(await call('/display/revision')).revision,2);

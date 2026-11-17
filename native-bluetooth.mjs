@@ -20,7 +20,18 @@ export function savePrinter(printer){if(!printer?.address||!/^[A-F0-9:]{17}$/i.t
 export async function scanPrinters(){if(!plugin())throw Error('Open Customli V5 POS Android app to find Bluetooth printers.');const r=await (plugin().scanPrinters?plugin().scanPrinters():plugin().listPrinters());return r.printers||[]}
 export async function pairPrinter(address){if(!plugin())throw Error('Open Customli V5 POS Android app to pair printers.');if(!plugin().pairPrinter)throw Error('The V5 Android app needs an update to pair new devices.');return plugin().pairPrinter({address})}
 export async function listPairedPrinters(){if(!plugin())return [];return (await plugin().listPrinters()).printers||[]}
-export async function sendTestPrint(printer=readPrinter()){if(!plugin())throw Error('Bluetooth printing requires the Customli V5 Android app.');if(!printer)throw Error('Find and connect a Bluetooth printer first.');return printQueue().run({receiptId:'test',printer,purpose:'test'},async()=>{try{await plugin().connect({address:printer.address});await plugin().printTest()}finally{await plugin().disconnect().catch(()=>{})}})}
+export async function sendTestPrint(printer=readPrinter(),request){
+ if(!plugin())throw Error('Bluetooth printing requires the Customli V5 Android app.');
+ if(!printer)throw Error('Find and connect a Bluetooth printer first.');
+ const payload=request?await request('/print/native-test','POST',{paperWidth:printer.width,purpose:'customer'}):null;
+ return printQueue().run({receiptId:'test',printer,purpose:'test'},async()=>{
+  try{
+   await plugin().connect({address:printer.address});
+   if(payload){if(payload.format!=='escpos'||!payload.base64)throw Error('Test receipt could not be prepared');await plugin().printRaw({base64:payload.base64});}
+   else await plugin().printTest();
+  }finally{await plugin().disconnect().catch(()=>{})}
+ });
+}
 export async function printPaidReceipt(request,receipt,printer=readPrinter(),purpose='customer'){
  if(!plugin())throw Error('Bluetooth printing requires the Customli V5 Android app.');
  if(!printer)throw Error('Connect a Bluetooth printer first.');
@@ -32,4 +43,27 @@ export async function printPaidReceipt(request,receipt,printer=readPrinter(),pur
   try{await plugin().connect({address:printer.address});await plugin().printRaw({base64:payload.base64})}finally{await plugin().disconnect().catch(()=>{})}
  });
  return {...result,receiptNumber:payload.receiptNumber};
+}
+
+let draining=false;
+export async function drainAutomaticPrints(request){
+ if(draining||!plugin()||!readPrinter())return;
+ draining=true;
+ try{
+  const printer=readPrinter();
+  for(let count=0;count<6;count++){
+   const {job}=await request('/print/native-jobs','POST',{action:'claim',paperWidth:printer.width});
+   if(!job)return;
+   try{
+    await printQueue().run({receiptId:job.orderId,receiptNumber:job.receiptNumber,printer,purpose:job.purpose},async()=>{
+     try{await plugin().connect({address:printer.address});await plugin().printRaw({base64:job.base64})}
+     finally{await plugin().disconnect().catch(()=>{})}
+    });
+   }catch(error){
+    await request('/print/native-jobs','POST',{action:'complete',id:job.id,lease:job.lease,status:'uncertain'}).catch(()=>{});
+    throw error;
+   }
+   await request('/print/native-jobs','POST',{action:'complete',id:job.id,lease:job.lease,status:'sent'});
+  }
+ }finally{draining=false}
 }

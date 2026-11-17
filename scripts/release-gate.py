@@ -27,7 +27,7 @@ with open(pathlib.Path(git('rev-parse','--git-path','v5-release-gate.lock')),'w'
  run('npm','run','build');run('node','node_modules/vite/bin/vite.js','build','--base=/v5-test/','--outDir','test-dist',env={**os.environ,'VITE_API_BASE':'/v5-test/api'})
  tested=state()
  if any(started[k]!=tested[k] for k in ['commit','source']):sys.exit('BLOCKED: source changed during build.')
- for test in ['qa/universal-api.test.mjs','qa/native-print-queue.test.mjs','qa/platform-auth.test.mjs','qa/native-bluetooth.test.mjs','qa/menu-costs.test.mjs','qa/shift-food.test.mjs','qa/onboarding.test.mjs','qa/onboarding.http.test.mjs','qa/expenses.test.mjs','qa/expenses.http.test.mjs','qa/phase1.integration.mjs','qa/print-studio.test.mjs','qa/print-contracts.test.mjs','qa/sales-channels.test.mjs'] :run('node',test)
+ for test in ['qa/universal-api.test.mjs','qa/native-print-queue.test.mjs','qa/platform-auth.test.mjs','qa/native-bluetooth.test.mjs','qa/menu-costs.test.mjs','qa/shift-food.test.mjs','qa/onboarding.test.mjs','qa/onboarding.http.test.mjs','qa/expenses.test.mjs','qa/expenses.http.test.mjs','qa/phase1.integration.mjs','qa/print-studio.test.mjs','qa/print-contracts.test.mjs','qa/native-auto.test.mjs','qa/native-receipt-encoding.test.mjs','qa/receipt-layout-regression.test.mjs','qa/sales-channels.test.mjs'] :run('node',test)
  run('node','qa/discount-rules.e2e.mjs')
  run('node','qa/native-bluetooth.e2e.mjs')
  run('node','qa/native-storage.e2e.mjs')
