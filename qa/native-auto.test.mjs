@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {migratePrint,location,sampleOrder,snapshotPacking,enqueuePrint} from '../print-model.mjs';
+import {migratePrint,location,sampleOrder,snapshotPacking,enqueuePrint,revisePacking} from '../print-model.mjs';
 const db=new DatabaseSync(':memory:');
 try{
  migratePrint(db);
@@ -20,5 +20,8 @@ try{
  const snapshot=jobs[0].snapshot;
  db.prepare("UPDATE receipt_templates SET version=version+1 WHERE purpose='customer'").run();
  assert.equal(db.prepare("SELECT snapshot FROM native_auto_jobs WHERE purpose='customer'").get().snapshot,snapshot);
+ order.items[0].refunded_quantity=order.items[0].quantity;
+ revisePacking(db,order,'owner');
+ assert.equal(db.prepare("SELECT status FROM native_auto_jobs WHERE purpose='kitchen'").get().status,'skipped');
  console.log('PASS recorded Grab order queues exactly one saved customer and kitchen document');
 }finally{db.close()}

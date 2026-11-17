@@ -52,17 +52,24 @@ export async function drainAutomaticPrints(request){
  try{
   const printer=readPrinter();
   for(let count=0;count<6;count++){
-   const {job}=await request('/print/native-jobs','POST',{action:'claim',paperWidth:printer.width});
-   if(!job)return;
+   let job;
    try{
-    await printQueue().run({receiptId:job.orderId,receiptNumber:job.receiptNumber,printer,purpose:job.purpose},async()=>{
-     try{await plugin().connect({address:printer.address});await plugin().printRaw({base64:job.base64})}
-     finally{await plugin().disconnect().catch(()=>{})}
+    await printQueue().reserve(async()=>{
+     const claimed=await request('/print/native-jobs','POST',{action:'claim',paperWidth:printer.width});
+     job=claimed.job;if(!job)return null;
+     return {
+      meta:{receiptId:job.orderId,receiptNumber:job.receiptNumber,printer,purpose:job.purpose},
+      send:async()=>{
+       try{await plugin().connect({address:printer.address});await plugin().printRaw({base64:job.base64})}
+       finally{await plugin().disconnect().catch(()=>{})}
+      }
+     };
     });
    }catch(error){
-    await request('/print/native-jobs','POST',{action:'complete',id:job.id,lease:job.lease,status:'uncertain'}).catch(()=>{});
+    if(job)await request('/print/native-jobs','POST',{action:'complete',id:job.id,lease:job.lease,status:'uncertain'}).catch(()=>{});
     throw error;
    }
+   if(!job)return;
    await request('/print/native-jobs','POST',{action:'complete',id:job.id,lease:job.lease,status:'sent'});
   }
  }finally{draining=false}
