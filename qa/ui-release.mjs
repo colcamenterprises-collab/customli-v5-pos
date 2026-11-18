@@ -1,4 +1,5 @@
 import {chromium} from 'playwright';
+import {expect} from '@playwright/test';
 import sharp from 'sharp';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,readFileSync,existsSync,rmSync,mkdirSync,writeFileSync} from 'node:fs';
@@ -52,10 +53,60 @@ try{
  await page.getByAltText('Unpaid bill preview').evaluate(e=>e.style.visibility='hidden');await snapshot('payment-request-modal');
 
  const request=async(route,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+apiPort+base+'api'+route,{method,headers:{Authorization:'Bearer '+fixture.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});assert(r.ok,await r.clone().text());return r.json()};
+
+ // Real multi-category catalog: all items remain rendered; navigation scrolls instead of filtering.
+ const catalogCategories=[];
+ for(let i=1;i<=6;i++){
+  const name='Category '+i+' long label';catalogCategories.push(name);
+  await request('/categories','POST',{name,icon:'🍔'});
+  for(let j=1;j<=2;j++)await request('/products','POST',{name:'Catalog '+i+' Item '+j,category:name,price:10+j,image:''});
+ }
+ await page.reload();
+ const nav=page.getByRole('navigation',{name:'Menu categories'}),catalog=page.getByLabel('Menu items',{exact:true});
+ await nav.waitFor();
+ assert.equal(await nav.locator('img,svg').count(),0,'Category navigation is text-only, including categories configured with icons');
+ await expect(page.locator('article.product')).toHaveCount(20);
+ const selectCategory=async name=>{await nav.getByRole('button',{name,exact:true}).click();await expect(nav.getByRole('button',{name,exact:true})).toHaveAttribute('aria-current','location')};
+ const last=catalogCategories.at(-1);
+ for(const [width,height] of [[1440,900],[1024,768],[820,1180],[390,844]]){
+  await page.setViewportSize({width,height});
+  await selectCategory(last);
+  await expect.poll(async()=>catalog.evaluate(e=>Math.abs(e.scrollTop+e.clientHeight-e.scrollHeight))).toBeLessThan(3);
+  await expect(nav.getByRole('button',{name:last,exact:true})).toHaveAttribute('aria-current','location');
+  assert(Math.abs((await catalog.getByRole('heading',{name:last,exact:true}).boundingBox()).y-(await catalog.boundingBox()).y)<4,'Last category jump aligns its heading');
+  const colour=await nav.getByRole('button',{name:last,exact:true}).evaluate(e=>({background:getComputedStyle(e).backgroundColor,text:getComputedStyle(e).color}));
+  assert.deepEqual(colour,{background:'rgb(22, 27, 27)',text:'rgb(255, 255, 255)'});
+  const navBounds=await nav.boundingBox(),buttonBounds=await nav.getByRole('button',{name:last,exact:true}).boundingBox();
+  assert(buttonBounds.x>=navBounds.x-1&&buttonBounds.x+buttonBounds.width<=navBounds.x+navBounds.width+1,'Active category is horizontally visible');
+  await bounds();
+  await page.screenshot({path:path.join(output,'catalog-text-'+width+'.png')});
+  await catalog.evaluate(e=>e.scrollTop=0);
+  await expect(nav.getByRole('button',{name:'All',exact:true})).toHaveAttribute('aria-current','location');
+  await selectCategory(catalogCategories[1]);
+  await expect.poll(async()=>catalog.evaluate(e=>e.scrollTop)).toBeGreaterThan(100);
+  // Manual scroll, independent of clicking, must move the active category both ways.
+  await catalog.evaluate(e=>{const section=[...e.querySelectorAll('section')].find(s=>s.getAttribute('aria-label')==='Category 4 long label');e.scrollTop+=section.getBoundingClientRect().top-e.getBoundingClientRect().top+2});
+  await expect(nav.getByRole('button',{name:catalogCategories[3],exact:true})).toHaveAttribute('aria-current','location');
+  assert.equal(await page.locator('article.product').count(),20,'Category jumps do not hide other sections');
+ }
+ await page.setViewportSize({width:1024,height:768});
+ const beforeRefresh=await catalog.evaluate(e=>e.scrollTop);
+ await page.waitForResponse(r=>r.url().includes(base+'api/products')&&r.request().method()==='GET',{timeout:7000});
+ assert(Math.abs(await catalog.evaluate(e=>e.scrollTop)-beforeRefresh)<3,'Catalog refresh preserves scroll position');
+ await expect(nav.getByRole('button',{name:catalogCategories[3],exact:true})).toHaveAttribute('aria-current','location');
+ await page.getByPlaceholder('Search menu...').fill('Catalog 2');
+ await expect(page.locator('article.product')).toHaveCount(2);
+ await expect(catalog.getByRole('heading',{name:catalogCategories[1],exact:true})).toBeVisible();
+ await page.getByPlaceholder('Search menu...').fill('no-matching-catalog-item');
+ await page.getByText('No items found.',{exact:true}).waitFor();
+ await page.getByPlaceholder('Search menu...').fill('');
+ await expect(page.locator('article.product')).toHaveCount(20);
+ await selectCategory('All');
+ console.log('PASS category text navigation: grouped All, tap/scroll synchronization, last category, active colours, horizontal visibility, search, refresh and four viewports');
  const product=(await request('/products'))[0];
  const extras=await request('/modifier-groups','POST',{name:'Unlimited extras',minSelect:0,maxSelect:null,options:[{name:'Extra cheese',priceMinor:2000,quantity:2},{name:'Extra bacon',priceMinor:3000,quantity:1}]});
  await request('/products/'+product.id+'/modifier-groups','POST',{groupIds:[extras.id]});
- await page.reload();await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();
+ await page.reload();await page.getByPlaceholder('Search menu...').fill(product.name);await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();
  const picker=page.getByRole('dialog',{name:'Customise '+product.name});await picker.waitFor();
  await picker.getByRole('button',{name:'Add Extra cheese',exact:true}).click();
  assert.equal(await picker.locator('.modifier-qty').first().locator('span').innerText(),'2','Configured quantity is used on first addition');
@@ -66,7 +117,7 @@ try{
  await picker.getByRole('button',{name:'Add to cart',exact:true}).click();await picker.waitFor({state:'hidden'});
  const choose=await request('/modifier-groups','POST',{name:'Included drink',minSelect:1,maxSelect:1,options:[{name:'Coke',priceMinor:0,quantity:1},{name:'Sprite',priceMinor:0,quantity:1}]});
  await request('/products/'+product.id+'/modifier-groups','POST',{groupIds:[choose.id]});
- await page.reload();await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();await picker.waitFor();
+ await page.reload();await page.getByPlaceholder('Search menu...').fill(product.name);await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();await picker.waitFor();
  await picker.getByRole('button',{name:'Add to cart',exact:true}).click();await picker.getByRole('alert').waitFor();
  await picker.getByRole('button',{name:'Add Coke',exact:true}).click();
  assert(await picker.getByRole('button',{name:'Add Sprite',exact:true}).isDisabled(),'Choose maximum blocks further selections');
