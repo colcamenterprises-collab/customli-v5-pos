@@ -76,13 +76,14 @@ export function modifierRoutes({db,p,method,b,user,res,send}){
    if(!Array.isArray(b.options)||b.options.length<1||b.options.length>100)failure(400,'Add between 1 and 100 options.');
    const names=new Set(),ids=new Set();
    options=b.options.map((o,index)=>{
+    if(!o||typeof o!=='object')failure(400,'Invalid option.');
     const optionName=nonempty(o.name,'option name'),key=optionName.toLocaleLowerCase();
     if(names.has(key))failure(400,'Option names must be unique.');names.add(key);
     if(o.id){if(typeof o.id!=='string'||ids.has(o.id)||!db.prepare('SELECT id FROM modifier_options WHERE id=? AND group_id=?').get(o.id,id))failure(400,'Invalid option.');ids.add(o.id);}
     return {id:o.id||randomUUID(),name:optionName,price:integer(o.priceMinor,0,100000000,'option price'),quantity:integer(o.quantity??1,1,30,'option quantity'),sort:index+1};
    });
   }
-  if(options&&!unlimited&&options.some(o=>o.quantity>max))failure(400,'Option quantity exceeds the maximum choices.');
+  if(!unlimited&&(options||details(db,{id}).options.filter(o=>o.active).map(o=>({quantity:o.default_quantity}))).some(o=>o.quantity>max))failure(400,'Option quantity exceeds the maximum choices.');
   const active=b.active===undefined?(g?.active??1):b.active?1:0;
   db.exec('BEGIN IMMEDIATE');
   try{

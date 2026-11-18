@@ -80,6 +80,7 @@ try{
  assert.equal(swapped.options.find(o=>o.id===unlimited.options[0].id).name,'Bacon','Renaming options preserves IDs');
  assert.equal((await call('/modifier-groups/'+unlimited.id,'PATCH',{options:[{id:normal.id,name:'Foreign',priceMinor:1,quantity:1}]})).status,400);
  assert.equal(success(await call('/modifier-groups')).find(g=>g.id===unlimited.id).name,'Level Up edited');
+ assert.equal((await call('/modifier-groups/'+unlimited.id,'PATCH',{maxSelect:1})).status,400,'Limits cannot make an existing option quantity impossible');
  success(await call('/modifier-groups/'+unlimited.id,'PATCH',{maxSelect:2}));
  assert.equal((await call('/orders','POST',{idempotencyKey:'finite-limit-restored',items:[{productId:product.id,quantity:1,modifiers:[{optionId:unlimited.options[0].id,quantity:3}]}],paymentMethod:'QR'})).status,400);
  assert.equal(success(await call('/orders/'+large.id)).items[0].modifiers.find(o=>o.name==='Cheese').priceMinor,2000,'Saved receipts survive modifier edits');
