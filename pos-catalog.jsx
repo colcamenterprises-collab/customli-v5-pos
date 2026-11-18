@@ -3,7 +3,7 @@ import styles from './pos-catalog.module.css';
 
 export default function PosCatalog({categories,products,search,renderProduct}){
  const [active,setActive]=useState('All'),[height,setHeight]=useState(500);
- const viewport=useRef(null),navigation=useRef(null),sectionRefs=useRef(new Map());
+ const viewport=useRef(null),navigation=useRef(null),sectionRefs=useRef(new Map()),topSelection=useRef('All');
  const sections=useMemo(()=>{
   const names=[...new Set([...categories.map(c=>c.name),...products.map(p=>p.category||'Uncategorised')])];
   const query=search.trim().toLocaleLowerCase();
@@ -17,14 +17,14 @@ export default function PosCatalog({categories,products,search,renderProduct}){
  },[]);
  useEffect(()=>{
   const scroller=viewport.current;if(!scroller)return;
-  scroller.scrollTop=0;setActive('All');
+  topSelection.current='All';scroller.scrollTop=0;setActive('All');
  },[search]);
  useEffect(()=>{
   const scroller=viewport.current;if(!scroller)return;
   let frame;
   const sync=()=>{
    cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{
-    if(scroller.scrollTop<=1){setActive('All');return}
+    if(scroller.scrollTop<=1){setActive(topSelection.current);return}
     if(scroller.scrollTop+scroller.clientHeight>=scroller.scrollHeight-2){setActive(sections.at(-1)?.name||'All');return}
     const edge=scroller.getBoundingClientRect().top+12;
     let name=sections[0]?.name||'All';
@@ -44,6 +44,7 @@ export default function PosCatalog({categories,products,search,renderProduct}){
  },[active]);
  const go=name=>{
   const scroller=viewport.current;if(!scroller)return;
+  topSelection.current=name===sections[0]?.name?name:'All';
   setActive(name);
   const target=sectionRefs.current.get(name),top=name==='All'?0:target?target.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop:0;
   scroller.scrollTo({top,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});

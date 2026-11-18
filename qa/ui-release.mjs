@@ -90,7 +90,16 @@ try{
   await expect(nav.getByRole('button',{name:catalogCategories[3],exact:true})).toHaveAttribute('aria-current','location');
   assert.equal(await page.locator('article.product').count(),20,'Category jumps do not hide other sections');
  }
+ const firstCategory=await catalog.locator(':scope > section').first().getAttribute('aria-label');
+ await selectCategory(firstCategory);
+ await expect.poll(async()=>catalog.evaluate(e=>e.scrollTop)).toBeLessThan(2);
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ await expect(nav.getByRole('button',{name:firstCategory,exact:true})).toHaveAttribute('aria-current','location');
+ await selectCategory('All');
+ await expect(nav.getByRole('button',{name:'All',exact:true})).toHaveAttribute('aria-current','location');
  await page.setViewportSize({width:1024,height:768});
+ await selectCategory(catalogCategories[3]);
+ await expect.poll(async()=>catalog.evaluate(e=>e.scrollTop)).toBeGreaterThan(100);
  const beforeRefresh=await catalog.evaluate(e=>e.scrollTop);
  await page.waitForResponse(r=>r.url().includes(base+'api/products')&&r.request().method()==='GET',{timeout:7000});
  assert(Math.abs(await catalog.evaluate(e=>e.scrollTop)-beforeRefresh)<3,'Catalog refresh preserves scroll position');
