@@ -50,5 +50,28 @@ try{
  await page.getByRole('button',{name:'Payment request',exact:true}).click();await page.getByAltText('Unpaid bill preview').waitFor();
  // Generated bill date/reference are separately tested by backend tests; hide only the image pixels.
  await page.getByAltText('Unpaid bill preview').evaluate(e=>e.style.visibility='hidden');await snapshot('payment-request-modal');
+
+ const request=async(route,method='GET',body)=>{const r=await fetch('http://127.0.0.1:'+apiPort+base+'api'+route,{method,headers:{Authorization:'Bearer '+fixture.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});assert(r.ok,await r.clone().text());return r.json()};
+ const product=(await request('/products'))[0];
+ const extras=await request('/modifier-groups','POST',{name:'Unlimited extras',minSelect:0,maxSelect:null,options:[{name:'Extra cheese',priceMinor:2000,quantity:2},{name:'Extra bacon',priceMinor:3000,quantity:1}]});
+ await request('/products/'+product.id+'/modifier-groups','POST',{groupIds:[extras.id]});
+ await page.reload();await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();
+ const picker=page.getByRole('dialog',{name:'Customise '+product.name});await picker.waitFor();
+ await picker.getByRole('button',{name:'Add Extra cheese',exact:true}).click();
+ assert.equal(await picker.locator('.modifier-qty').first().locator('span').innerText(),'2','Configured quantity is used on first addition');
+ for(let i=0;i<28;i++)await picker.getByRole('button',{name:'Add Extra cheese',exact:true}).click();
+ for(let i=0;i<2;i++)await picker.getByRole('button',{name:'Add Extra bacon',exact:true}).click();
+ assert.equal(await picker.locator('.modifier-qty').first().locator('span').innerText(),'30');
+ assert.equal(await picker.locator('.modifier-qty').last().locator('span').innerText(),'2','Unlimited modifier can exceed 30 across options');
+ await picker.getByRole('button',{name:'Add to cart',exact:true}).click();await picker.waitFor({state:'hidden'});
+ const choose=await request('/modifier-groups','POST',{name:'Included drink',minSelect:1,maxSelect:1,options:[{name:'Coke',priceMinor:0,quantity:1},{name:'Sprite',priceMinor:0,quantity:1}]});
+ await request('/products/'+product.id+'/modifier-groups','POST',{groupIds:[choose.id]});
+ await page.reload();await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();await picker.waitFor();
+ await picker.getByRole('button',{name:'Add to cart',exact:true}).click();await picker.getByRole('alert').waitFor();
+ await picker.getByRole('button',{name:'Add Coke',exact:true}).click();
+ assert(await picker.getByRole('button',{name:'Add Sprite',exact:true}).isDisabled(),'Choose maximum blocks further selections');
+ await page.setViewportSize({width:1024,height:768});await bounds();await page.screenshot({path:path.join(output,'modifier-choose-tablet.png')});
+ await picker.getByRole('button',{name:'Add to cart',exact:true}).click();await picker.waitFor({state:'hidden'});
+ console.log('PASS real API modifier picker: optional over 30, configured quantity, required choice, upper bound and tablet layout');
  assert.deepEqual(errors,[]);console.log(JSON.stringify({status:'PASS',base,snapshots:7,isolatedDatabase:true,hardwareValidated:false}));
 }finally{await browser?.close();await new Promise(r=>web.close(r));if(api.exitCode===null){api.kill();await new Promise(r=>api.once('exit',r))}await fixture.close();rmSync(data,{recursive:true,force:true})}
