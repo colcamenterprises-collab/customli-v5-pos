@@ -40,11 +40,16 @@ CREATE TABLE IF NOT EXISTS kitchen_outbox(
  UNIQUE(order_id,revision,event_type));
 CREATE INDEX IF NOT EXISTS idx_kitchen_outbox_pending ON kitchen_outbox(status,created_at);
  `);
+ const existingGroupColumns=db.prepare('PRAGMA table_info(modifier_groups)').all().map(x=>x.name);
+ if(!existingGroupColumns.includes('max_unlimited'))db.exec('ALTER TABLE modifier_groups ADD COLUMN max_unlimited INTEGER NOT NULL DEFAULT 0 CHECK(max_unlimited IN (0,1))');
+ const optionColumns=db.prepare('PRAGMA table_info(modifier_options)').all().map(x=>x.name);
+ if(!optionColumns.includes('default_quantity'))db.exec('ALTER TABLE modifier_options ADD COLUMN default_quantity INTEGER NOT NULL DEFAULT 1 CHECK(default_quantity BETWEEN 1 AND 30)');
+
 }
 const failure=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const nonempty=(s,n)=>{const v=String(s||'').trim();if(!v||v.length>100)failure(400,'Enter a valid '+n+'.');return v};
 const integer=(value,low,high,name)=>{if(!Number.isSafeInteger(value)||value<low||value>high)failure(400,'Invalid '+name+'.');return value};
-const details=(db,group)=>({...group,options:db.prepare('SELECT id,name,price_minor,active,sort_order FROM modifier_options WHERE group_id=? ORDER BY sort_order,name').all(group.id)});
+const details=(db,group)=>({...group,options:db.prepare('SELECT id,name,price_minor,default_quantity,active,sort_order FROM modifier_options WHERE group_id=? ORDER BY sort_order,name').all(group.id)});
 export function modifierRoutes({db,p,method,b,user,res,send}){
  if(p==='/modifier-groups'&&method==='GET'){
   return send(res,200,db.prepare('SELECT * FROM modifier_groups WHERE active=1 ORDER BY sort_order,name').all().map(g=>details(db,g)));
@@ -56,21 +61,49 @@ export function modifierRoutes({db,p,method,b,user,res,send}){
   return send(res,200,groups.map(g=>({...g,options:details(db,g).options.filter(x=>x.active)})));
  }
  if(!['Owner','Manager'].includes(user.role))failure(403,'Manager access is required.');
- if(p==='/modifier-groups'&&method==='POST'){
-  const name=nonempty(b.name,'group name'),min=integer(b.minSelect??0,0,30,'minimum selections'),max=integer(b.maxSelect??1,1,30,'maximum selections');
+ if((p==='/modifier-groups'&&method==='POST')||(/^\/modifier-groups\/[a-f0-9-]{36}$/i.test(p)&&method==='PATCH')){
+  const id=method==='POST'?randomUUID():p.split('/')[2];
+  const g=method==='POST'?null:db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id);
+  if(method==='PATCH'&&!g)failure(404,'Modifier not found.');
+  const name=nonempty(b.name??g?.name,'modifier name'),min=integer(b.minSelect??g?.min_select??0,0,30,'minimum selections');
+  const unlimited=b.maxSelect===null||(b.maxSelect===undefined&&g?.max_unlimited===1);
+  const max=unlimited?30:integer(b.maxSelect??g?.max_select??1,1,30,'maximum selections');
+  if(unlimited&&min!==0)failure(400,'Choose modifiers need a maximum.');
   if(min>max)failure(400,'Minimum cannot exceed maximum selections.');
-  const id=randomUUID();
-  db.prepare('INSERT INTO modifier_groups(id,name,description,min_select,max_select,sort_order) VALUES(?,?,?,?,?,?)').run(id,name,String(b.description||'').slice(0,300),min,max,db.prepare('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM modifier_groups').get().n);
-  return send(res,201,details(db,db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id)));
- }
- if(/^\/modifier-groups\/[a-f0-9-]{36}$/i.test(p)&&method==='PATCH'){
-  const id=p.split('/')[2],g=db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id);
-  if(!g)failure(404,'Modifier group not found.');
-  const name=nonempty(b.name??g.name,'group name'),min=integer(b.minSelect??g.min_select,0,30,'minimum'),max=integer(b.maxSelect??g.max_select,1,30,'maximum');
-  if(min>max)failure(400,'Minimum cannot exceed maximum.');
-  const active=b.active===undefined?g.active:b.active?1:0;
-  db.prepare('UPDATE modifier_groups SET name=?,description=?,min_select=?,max_select=?,active=? WHERE id=?').run(name,String(b.description??g.description??'').slice(0,300),min,max,active,id);
-  return send(res,200,details(db,db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id)));
+  if(db.prepare('SELECT id FROM modifier_groups WHERE name=? COLLATE NOCASE AND id<>?').get(name,id))failure(400,'A modifier with this name already exists.');
+  let options;
+  if(b.options!==undefined){
+   if(!Array.isArray(b.options)||b.options.length<1||b.options.length>100)failure(400,'Add between 1 and 100 options.');
+   const names=new Set(),ids=new Set();
+   options=b.options.map((o,index)=>{
+    if(!o||typeof o!=='object')failure(400,'Invalid option.');
+    const optionName=nonempty(o.name,'option name'),key=optionName.toLocaleLowerCase();
+    if(names.has(key))failure(400,'Option names must be unique.');names.add(key);
+    if(o.id){if(typeof o.id!=='string'||ids.has(o.id)||!db.prepare('SELECT id FROM modifier_options WHERE id=? AND group_id=?').get(o.id,id))failure(400,'Invalid option.');ids.add(o.id);}
+    return {id:o.id||randomUUID(),name:optionName,price:integer(o.priceMinor,0,100000000,'option price'),quantity:integer(o.quantity??1,1,30,'option quantity'),sort:index+1};
+   });
+  }
+  if(!unlimited&&(options||details(db,{id}).options.filter(o=>o.active).map(o=>({quantity:o.default_quantity}))).some(o=>o.quantity>max))failure(400,'Option quantity exceeds the maximum choices.');
+  const active=b.active===undefined?(g?.active??1):b.active?1:0;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   if(g)db.prepare('UPDATE modifier_groups SET name=?,description=?,min_select=?,max_select=?,max_unlimited=?,active=? WHERE id=?').run(name,String(b.description??g.description??'').slice(0,300),min,max,unlimited?1:0,active,id);
+   else db.prepare('INSERT INTO modifier_groups(id,name,description,min_select,max_select,max_unlimited,sort_order) VALUES(?,?,?,?,?,?,?)').run(id,name,String(b.description||'').slice(0,300),min,max,unlimited?1:0,db.prepare('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM modifier_groups').get().n);
+   if(options){
+    // Keep IDs referenced by historical receipts, recipes and costs; removed options become inactive.
+    const existing=db.prepare('SELECT id,name FROM modifier_options WHERE group_id=?').all(id);
+    // Temporarily free names so swapping option names is atomic and unique-safe.
+    for(const o of existing)db.prepare('UPDATE modifier_options SET name=?,active=0 WHERE id=?').run('__editing_'+randomUUID(),o.id);
+    for(const o of options)db.prepare('INSERT INTO modifier_options(id,group_id,name,price_minor,default_quantity,sort_order,active) VALUES(?,?,?,?,?,?,1) ON CONFLICT(id) DO UPDATE SET name=excluded.name,price_minor=excluded.price_minor,default_quantity=excluded.default_quantity,sort_order=excluded.sort_order,active=1').run(o.id,id,o.name,o.price,o.quantity,o.sort);
+    for(const old of existing)if(!options.some(o=>o.id===old.id)){
+     // An inactive name may already have been reused by a new option.
+     const reused=options.some(o=>o.name.toLocaleLowerCase()===old.name.toLocaleLowerCase());
+     db.prepare('UPDATE modifier_options SET name=? WHERE id=?').run(reused?old.name+' (removed '+old.id+')':old.name,old.id);
+    }
+   }
+   db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e;}
+  return send(res,g?200:201,details(db,db.prepare('SELECT * FROM modifier_groups WHERE id=?').get(id)));
  }
  if(/^\/modifier-groups\/[a-f0-9-]{36}\/options$/i.test(p)&&method==='POST'){
   const groupId=p.split('/')[2];
@@ -108,7 +141,7 @@ export function priceOrderLine(db,line,product){
  const qty=integer(line.quantity,1,100,'item quantity');
  const groups=db.prepare('SELECT g.* FROM modifier_groups g JOIN product_modifier_groups pg ON pg.group_id=g.id WHERE pg.product_id=? AND g.active=1 ORDER BY g.sort_order,g.id').all(product.id);
  const chosen=line.modifiers??[];
- if(!Array.isArray(chosen)||chosen.length>50)failure(400,'Invalid item modifiers.');
+ if(!Array.isArray(chosen)||chosen.length>100)failure(400,'Invalid item modifiers.');
  const seen=new Set(),selections=[],quantities=new Map();
  let adjustment=0;
  for(const choice of chosen){
@@ -117,7 +150,7 @@ export function priceOrderLine(db,line,product){
   seen.add(id);
   const opt=db.prepare('SELECT o.*,g.name AS group_name,g.active AS group_active FROM modifier_options o JOIN modifier_groups g ON g.id=o.group_id WHERE o.id=?').get(id);
   if(!opt||!opt.active||!opt.group_active||!groups.some(g=>g.id===opt.group_id))failure(400,'An option is not available for this menu item.');
-  const quantity=integer(choice.quantity??1,1,30,'option quantity');
+  const quantity=integer(choice.quantity??opt.default_quantity??1,1,30,'option quantity');
   quantities.set(opt.group_id,(quantities.get(opt.group_id)||0)+quantity);
   const delta=opt.price_minor*quantity;
   if(!Number.isSafeInteger(delta))failure(400,'Option amount is too large.');
@@ -125,7 +158,7 @@ export function priceOrderLine(db,line,product){
   selections.push({id:opt.id,groupId:opt.group_id,groupName:opt.group_name,name:opt.name,priceMinor:opt.price_minor,quantity});
  }
  for(const group of groups){const number=quantities.get(group.id)||0;
-  if(number<group.min_select||number>group.max_select)failure(400,'Select '+group.min_select+'–'+group.max_select+' options from '+group.name+'.');
+  if(number<group.min_select||(!group.max_unlimited&&number>group.max_select))failure(400,'Select '+group.min_select+'–'+group.max_select+' options from '+group.name+'.');
  }
  const notes=String(line.instructions||'').trim();
  if(notes.length>500)failure(400,'Preparation instructions are too long.');

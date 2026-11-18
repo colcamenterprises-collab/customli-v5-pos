@@ -64,6 +64,30 @@ try{
  assert.equal(old.items[0].modifiers[0].priceMinor,150,'Historical receipt price must stay unchanged');
  const second=success(await call('/orders','POST',{idempotencyKey:'new-price',items:[{productId:product.id,quantity:1,modifiers:[{optionId:normal.id,quantity:1}]}],paymentMethod:'QR'}),201);
  assert.equal(second.items[0].price,product.price+250,'Future sale must use current server price');
+
+ // A complete modifier and all its options commit together, without a business maximum.
+ const unlimited=success(await call('/modifier-groups','POST',{name:'Level Up',minSelect:0,maxSelect:null,description:'Extras',options:[{name:'Cheese',priceMinor:2000,quantity:2},{name:'Bacon',priceMinor:3000,quantity:1}]}),201);
+ assert.equal(unlimited.max_unlimited,1);assert.equal(unlimited.options.length,2);assert.equal(unlimited.options[0].default_quantity,2);
+ success(await call('/products/'+product.id+'/modifier-groups','POST',{groupIds:[unlimited.id]}));
+ const plain=success(await call('/orders','POST',{idempotencyKey:'optional-none',items:[{productId:product.id,quantity:1}],paymentMethod:'QR'}),201);
+ assert.equal(plain.items[0].price,product.price);
+ const large=success(await call('/orders','POST',{idempotencyKey:'optional-no-maximum',items:[{productId:product.id,quantity:1,modifiers:unlimited.options.map((o,i)=>({optionId:o.id,quantity:i?2:30}))}],paymentMethod:'QR'}),201);
+ assert.equal(large.items[0].price,product.price+30*2000+2*3000);
+ const bad=await call('/modifier-groups','POST',{name:'Invalid batch',minSelect:0,maxSelect:null,options:[{name:'OK',priceMinor:100,quantity:1},{name:'Bad',priceMinor:-1,quantity:1}]});
+ assert.equal(bad.status,400);assert(!success(await call('/modifier-groups')).some(g=>g.name==='Invalid batch'),'Invalid batch must leave no partial modifier');
+ const swapped=success(await call('/modifier-groups/'+unlimited.id,'PATCH',{name:'Level Up edited',options:unlimited.options.map((o,i)=>({id:o.id,name:i?'Cheese':'Bacon',priceMinor:o.price_minor,quantity:o.default_quantity}))}));
+ assert.equal(swapped.max_unlimited,1,'Editing options preserves unlimited policy');
+ assert.equal(swapped.options.find(o=>o.id===unlimited.options[0].id).name,'Bacon','Renaming options preserves IDs');
+ assert.equal((await call('/modifier-groups/'+unlimited.id,'PATCH',{options:[{id:normal.id,name:'Foreign',priceMinor:1,quantity:1}]})).status,400);
+ assert.equal(success(await call('/modifier-groups')).find(g=>g.id===unlimited.id).name,'Level Up edited');
+ assert.equal((await call('/modifier-groups/'+unlimited.id,'PATCH',{maxSelect:1})).status,400,'Limits cannot make an existing option quantity impossible');
+ success(await call('/modifier-groups/'+unlimited.id,'PATCH',{maxSelect:2}));
+ assert.equal((await call('/orders','POST',{idempotencyKey:'finite-limit-restored',items:[{productId:product.id,quantity:1,modifiers:[{optionId:unlimited.options[0].id,quantity:3}]}],paymentMethod:'QR'})).status,400);
+ assert.equal(success(await call('/orders/'+large.id)).items[0].modifiers.find(o=>o.name==='Cheese').priceMinor,2000,'Saved receipts survive modifier edits');
+ identity.setRole('Cashier');
+ assert.equal((await call('/modifier-groups','POST',{name:'Escalation',minSelect:0,maxSelect:null,options:[{name:'Bad',priceMinor:0}]})).status,403);
+ identity.setRole('Owner');
+ console.log('PASS atomic modifier/options creation, unlimited optional checkout over 30 selections, configured quantities, edits, finite bounds, foreign IDs and cashier denial');
  console.log('PASS: modifier group setup, required selection, server pricing, per-line immutable receipt snapshot, amendment-proof cost and idempotent KDS outbox');
  console.log('PASS: client cannot insert nonexistent option, exceed limits, or omit required modifier');
 }finally{
