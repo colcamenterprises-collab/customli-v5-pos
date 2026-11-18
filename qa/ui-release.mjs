@@ -79,6 +79,7 @@ try{
   const navBounds=await nav.boundingBox(),buttonBounds=await nav.getByRole('button',{name:last,exact:true}).boundingBox();
   assert(buttonBounds.x>=navBounds.x-1&&buttonBounds.x+buttonBounds.width<=navBounds.x+navBounds.width+1,'Active category is horizontally visible');
   await bounds();
+  if(width<=600)assert((await catalog.boundingBox()).y+(await catalog.boundingBox()).height<=(await page.locator('.rail').boundingBox()).y,'Mobile catalog controls stay above the bottom navigation');
   await page.screenshot({path:path.join(output,'catalog-text-'+width+'.png')});
   await catalog.evaluate(e=>e.scrollTop=0);
   await expect(nav.getByRole('button',{name:'All',exact:true})).toHaveAttribute('aria-current','location');

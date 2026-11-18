@@ -11,7 +11,7 @@ export default function PosCatalog({categories,products,search,renderProduct}){
  },[categories,products,search]);
  const sectionKey=sections.map(s=>s.name+':'+s.items.map(p=>p.id).join(',')).join('|');
  useLayoutEffect(()=>{
-  const size=()=>{if(viewport.current)setHeight(Math.max(180,Math.floor(innerHeight-viewport.current.getBoundingClientRect().top-24)))};
+  const size=()=>{if(viewport.current)setHeight(Math.max(180,Math.floor(innerHeight-viewport.current.getBoundingClientRect().top-(matchMedia('(max-width:600px)').matches?80:24))))};
   size();const observer=new ResizeObserver(size);if(navigation.current)observer.observe(navigation.current);
   window.addEventListener('resize',size);return()=>{observer.disconnect();window.removeEventListener('resize',size)};
  },[]);
