@@ -94,6 +94,15 @@ test('renamed admin categories stay excluded from recipe selection',()=>{
  const item=call(db,'/items','POST',{name:'Paper',categoryId:category.id,packQuantity:100,packUnit:'each',purchaseCost:40}).data.item;
  assert.equal(item.recipe_eligible,0);
 });
+test('decimal purchase prices and modifier measurement families remain safe',()=>{
+ const db=fixture();const item=call(db,'/items','POST',{name:'Sauce',packQuantity:1,packUnit:'kg',purchaseCost:19.99}).data.item;
+ assert.equal(item.pack_cost_minor,1999);
+ assert.equal(call(db,'/items/'+item.id,'PATCH',{purchaseCost:20.01}).data.item.pack_cost_minor,2001);
+ assert.equal(call(db,'/items/'+item.id,'PATCH',{purchaseCost:20.001}).status,400);
+ db.exec("CREATE TABLE food_modifier_ingredients(option_id TEXT,ingredient_id TEXT,quantity REAL);INSERT INTO food_modifier_ingredients VALUES('m','"+item.id+"',20)");
+ assert.equal(call(db,'/items/'+item.id,'PATCH',{packUnit:'each'}).status,409);
+ assert.equal(call(db,'/items/'+item.id,'PATCH',{packUnit:'g',packQuantity:1000}).status,200);
+});
 test('supplier price updates require exact SKU and retain recipe relationships',()=>{
  const db=fixture();const supplier=call(db,'/suppliers','POST',{name:'Makro'}).data.record;
  const item=call(db,'/items','POST',{name:'Bun',supplierId:supplier.id,supplierSku:'B-123',packQuantity:12,packUnit:'each',purchaseCost:120}).data.item;

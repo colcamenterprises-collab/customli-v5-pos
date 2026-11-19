@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';import {DatabaseSync} from 'node:sqlite';
-import {migrateFoodModel} from '../food-model.mjs';import {migratePurchasing} from '../purchasing.mjs';import {migrateRecipeCosting,handleRecipeCosting} from '../recipe-costing.mjs';
+import {migrateFoodModel,handleFoodModel} from '../food-model.mjs';import {migratePurchasing} from '../purchasing.mjs';import {migrateRecipeCosting,handleRecipeCosting} from '../recipe-costing.mjs';
 import {migrateSaleCosts,snapshotSaleCost} from '../sales-costs.mjs';
 function db(){const d=new DatabaseSync(':memory:');d.exec('PRAGMA foreign_keys=ON;CREATE TABLE products(id TEXT PRIMARY KEY,name TEXT,active INTEGER,price INTEGER);');migrateFoodModel(d);migratePurchasing(d);migrateRecipeCosting(d);return d}
 const owner={id:'owner',role:'Owner',permissions:new Set(['operations.recipes','operations.costing'])};
@@ -38,4 +38,14 @@ test('a case of bottles costs accurately by bottle or volume without changing pa
  const saved=call(d,'','POST',{name:'Drink set',yieldQuantity:1,lines:[{itemId:'water',lineType:'ingredient',quantity:1,unitUsed:'each'}]});assert.equal(saved.status,201);assert.equal(saved.data.recipe.total_cost_minor,1200);
  const updated=call(d,'/'+saved.data.recipe.id,'PATCH',{name:'Drink set',yieldQuantity:1,lines:[{itemId:'water',lineType:'ingredient',quantity:300,unitUsed:'ml'}]});assert.equal(updated.status,200);assert.equal(updated.data.recipe.total_cost_minor,600);
  const pack=d.prepare("SELECT pack_quantity,units_per_pack,each_quantity,each_unit FROM food_ingredients WHERE id='water'").get();assert.deepEqual({...pack},{pack_quantity:12,units_per_pack:12,each_quantity:600,each_unit:'ml'});
+});
+test('legacy recipe relinking synchronizes current checkout associations',()=>{
+ const d=db();d.exec("INSERT INTO products VALUES('old','Old item',1,10000),('new','New item',1,10000);INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at) VALUES('bun','Bun','each',10,'each',10000,'2026-11-19')");
+ const request=(path,method,body)=>{const res={writeHead(status){this.status=status},end(payload){this.data=JSON.parse(payload)}};handleFoodModel(new URL('http://localhost/v5/api/food-model'+path),method,res,d,owner,body);return res};
+ const original=request('/recipes','POST',{name:'Bun recipe',yieldQuantity:1,productId:'old',components:[{ingredientId:'bun',quantity:1}]});assert.equal(original.status,200);
+ const recipeId=original.data.recipe.id;
+ const changed=request('/recipes/'+recipeId,'PATCH',{name:'Bun recipe',yieldQuantity:1,productId:'new',components:[{ingredientId:'bun',quantity:1}]});assert.equal(changed.status,200);
+ assert.deepEqual(d.prepare('SELECT product_id FROM recipe_menu_links WHERE recipe_id=?').all(recipeId).map(x=>x.product_id),['new']);
+ assert.equal(request('/recipes/'+recipeId,'PATCH',{name:'Bun recipe',yieldQuantity:1,productId:null,components:[{ingredientId:'bun',quantity:1}]}).status,200);
+ assert.equal(d.prepare('SELECT count(*) AS n FROM recipe_menu_links WHERE recipe_id=?').get(recipeId).n,0);
 });

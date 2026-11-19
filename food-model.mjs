@@ -132,11 +132,14 @@ export function handleFoodModel(url,method,res,db,user,body){
  const id=method==='PATCH'?p[1]:randomUUID();if(method==='PATCH'&&!lookup(db,id))fail(404,'Recipe not found.');
  const conflicting=product?db.prepare('SELECT id FROM food_recipes WHERE product_id=? AND id<>?').get(product,id):null;
  if(conflicting)fail(409,'That menu item is already linked to another recipe.');
+ const hasLinks=!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_menu_links'").get();
+ if(product&&hasLinks&&db.prepare('SELECT 1 FROM recipe_menu_links WHERE product_id=? AND recipe_id<>?').get(product,id))fail(409,'That menu item is already linked to another recipe.');
  db.exec('BEGIN IMMEDIATE');
  try{
  const now=new Date().toISOString(),instructions=String(record.instructions||'').trim().slice(0,5000);
  if(method==='PATCH')db.prepare('UPDATE food_recipes SET name=?,yield_quantity=?,packaging_cost_minor=?,waste_percent=?,target_price_minor=?,product_id=?,instructions=?,updated_at=? WHERE id=?').run(name,yieldQ,packaging,waste,target,product,instructions,now,id);
  else db.prepare('INSERT INTO food_recipes(id,name,yield_quantity,packaging_cost_minor,waste_percent,target_price_minor,product_id,instructions,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id,name,yieldQ,packaging,waste,target,product,instructions,now);
+ if(hasLinks){db.prepare('DELETE FROM recipe_menu_links WHERE recipe_id=?').run(id);if(product)db.prepare('INSERT INTO recipe_menu_links(recipe_id,product_id) VALUES(?,?)').run(id,product)}
  db.prepare('DELETE FROM food_recipe_components WHERE recipe_id=?').run(id);
  if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get())db.prepare('DELETE FROM recipe_cost_lines WHERE recipe_id=?').run(id);
  const ins=db.prepare('INSERT INTO food_recipe_components VALUES(?,?,?)');
