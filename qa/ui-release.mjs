@@ -45,7 +45,17 @@ try{
   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--control-border').trim()),'#dfe5e4','Shared design tokens missing');
  };
  await page.addInitScript(token=>sessionStorage.setItem('customli-platform-session',token),fixture.token);await page.goto(origin+base);await page.getByRole('button',{name:'Add to cart',exact:true}).first().waitFor();
- for(const [name,width,height] of [['desktop',1440,900],['tablet',1024,768],['portrait',820,1180],['mobile',390,844]]){await page.setViewportSize({width,height});await bounds();await snapshot('menu-'+name)}
+ for(const [name,width,height] of [['desktop',1440,900],['tablet',1024,768],['portrait',820,1180],['mobile',390,844]]){
+  await page.setViewportSize({width,height});
+  // The catalog sizes itself in a ResizeObserver. Wait for that layout before capturing.
+  await page.waitForFunction(()=>{
+   const catalog=document.querySelector('[aria-label="Menu items"]');
+   if(!catalog)return false;
+   const expected=Math.max(180,Math.floor(innerHeight-catalog.getBoundingClientRect().top-(matchMedia('(max-width:600px)').matches?80:24)));
+   return Math.abs(catalog.getBoundingClientRect().height-expected)<=1;
+  });
+  await bounds();await snapshot('menu-'+name);
+ }
  await page.setViewportSize({width:1440,height:900});await page.getByRole('combobox',{name:'Payment method',exact:true}).click();await page.getByRole('listbox').waitFor();await snapshot('payment-dropdown');await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'Add to cart',exact:true}).first().click();await page.locator('.line').waitFor();await snapshot('populated-cart');
  await page.getByRole('button',{name:'Payment request',exact:true}).click();await page.getByAltText('Unpaid bill preview').waitFor();
