@@ -24,15 +24,19 @@ export function migratePurchasing(db){
   catch(e){db.exec('ROLLBACK');throw e}finally{db.exec('PRAGMA foreign_keys=ON')}
  }
  db.exec(`CREATE TABLE IF NOT EXISTS purchasing_suppliers(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,contact_name TEXT NOT NULL DEFAULT '',email TEXT NOT NULL DEFAULT '',phone TEXT NOT NULL DEFAULT '',website TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1);
- CREATE TABLE IF NOT EXISTS purchasing_categories(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,active INTEGER NOT NULL DEFAULT 1);
+ CREATE TABLE IF NOT EXISTS purchasing_categories(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE COLLATE NOCASE,active INTEGER NOT NULL DEFAULT 1,recipe_eligible INTEGER NOT NULL DEFAULT 1);
  CREATE TABLE IF NOT EXISTS purchasing_price_history(id TEXT PRIMARY KEY,item_id TEXT NOT NULL REFERENCES food_ingredients(id) ON DELETE RESTRICT,previous_minor INTEGER NOT NULL,new_minor INTEGER NOT NULL,change_minor INTEGER NOT NULL,change_percent REAL,effective_date TEXT NOT NULL,recorded_at TEXT NOT NULL,actor_id TEXT NOT NULL,source TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS purchasing_price_item ON purchasing_price_history(item_id,recorded_at DESC);`);
  const existing=new Set(db.prepare('PRAGMA table_info(food_ingredients)').all().map(row=>row.name));
  for(const [column,definition] of Object.entries(columns))if(!existing.has(column))db.exec(`ALTER TABLE food_ingredients ADD COLUMN ${column} ${definition}`);
+ if(!db.prepare('PRAGMA table_info(purchasing_categories)').all().some(x=>x.name==='recipe_eligible')){
+  db.exec('ALTER TABLE purchasing_categories ADD COLUMN recipe_eligible INTEGER NOT NULL DEFAULT 1');
+  db.prepare("UPDATE purchasing_categories SET recipe_eligible=0 WHERE name IN ('Admin','Cleaning')").run();
+ }
  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS purchasing_supplier_sku ON food_ingredients(supplier_id,supplier_sku) WHERE supplier_id IS NOT NULL AND supplier_sku<>'';
  CREATE UNIQUE INDEX IF NOT EXISTS purchasing_supplier_product ON food_ingredients(supplier_id,name COLLATE NOCASE,brand COLLATE NOCASE) WHERE supplier_id IS NOT NULL;
  CREATE INDEX IF NOT EXISTS purchasing_category ON food_ingredients(category_id,active);`);
- for(const value of defaults)db.prepare('INSERT OR IGNORE INTO purchasing_categories(id,name) VALUES(?,?)').run(randomUUID(),value);
+ for(const value of defaults)db.prepare('INSERT OR IGNORE INTO purchasing_categories(id,name,recipe_eligible) VALUES(?,?,?)').run(randomUUID(),value,['Admin','Cleaning'].includes(value)?0:1);
  db.prepare("UPDATE food_ingredients SET last_updated=substr(updated_at,1,10) WHERE last_updated IS NULL").run();
 }
 
@@ -42,7 +46,7 @@ function history(db,user,id,before,after,effective,source){
 }
 export function recordLegacyPriceChange(db,user,id,before,after){if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='purchasing_price_history'").get())history(db,user,id,before,after,stamp().slice(0,10),'legacy edit')}
 
-const itemQuery=`SELECT i.*,s.name AS supplier,c.name AS category FROM food_ingredients i LEFT JOIN purchasing_suppliers s ON s.id=i.supplier_id LEFT JOIN purchasing_categories c ON c.id=i.category_id`;
+const itemQuery=`SELECT i.*,s.name AS supplier,c.name AS category,c.recipe_eligible FROM food_ingredients i LEFT JOIN purchasing_suppliers s ON s.id=i.supplier_id LEFT JOIN purchasing_categories c ON c.id=i.category_id`;
 function tenantCurrency(db){
  const table=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='restaurant_setup'").get();
  if(table){const row=db.prepare("SELECT profile_json FROM restaurant_setup WHERE id='primary'").get();if(row){try{const value=JSON.parse(row.profile_json).currency;if(/^[A-Z]{3}$/.test(value))return value}catch{}}}
@@ -68,7 +72,7 @@ function validate(db,input,existing=null){
  if(row.supplierUrl){try{const url=new URL(row.supplierUrl);if(!['http:','https:'].includes(url.protocol))throw Error()}catch{error(400,'Enter a valid supplier product URL.')}}
  if(row.supplierId&&!db.prepare('SELECT id FROM purchasing_suppliers WHERE id=?').get(row.supplierId))error(400,'Choose an existing supplier.');
  if(row.categoryId&&!db.prepare('SELECT id FROM purchasing_categories WHERE id=? AND active=1').get(row.categoryId))error(400,'Choose an active purchasing category.');
- const base=units[row.packUnit][0],hasLines=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get();if(existing&&existing.base_unit!==base&&(db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(existing.id)||hasLines&&db.prepare('SELECT 1 FROM recipe_cost_lines WHERE item_id=? LIMIT 1').get(existing.id)))error(409,'This item is used in a recipe. Update its recipe quantities before changing measurement type.');
+ const base=units[row.packUnit==='each'&&row.eachUnit!=='each'?row.eachUnit:row.packUnit][0],hasLines=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get();if(existing&&existing.base_unit!==base&&(db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(existing.id)||hasLines&&db.prepare('SELECT 1 FROM recipe_cost_lines WHERE item_id=? LIMIT 1').get(existing.id)))error(409,'This item is used in a recipe. Update its recipe quantities before changing measurement type.');
  const purchaseCostMinor=input.purchaseCostMinor!==undefined?amount(input.purchaseCostMinor,'purchase cost'):money(input.purchaseCost,'purchase cost');
  return {...row,baseUnit:base,purchaseCostMinor};
 }
@@ -100,8 +104,9 @@ export function handlePurchasing(url,method,res,db,user,body){
    if(method==='PATCH'&&!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id))error(404,'Record not found.');
    const active=b.active===false||b.active===0?0:1;
    if(categories){
-    if(method==='POST')db.prepare('INSERT INTO purchasing_categories(id,name,active) VALUES(?,?,?)').run(id,value,active);
-    else db.prepare('UPDATE purchasing_categories SET name=?,active=? WHERE id=?').run(value,active,id);
+    const eligible=b.recipeEligible===false||b.recipeEligible===0?0:1;
+    if(method==='POST')db.prepare('INSERT INTO purchasing_categories(id,name,active,recipe_eligible) VALUES(?,?,?,?)').run(id,value,active,eligible);
+    else db.prepare('UPDATE purchasing_categories SET name=?,active=?,recipe_eligible=? WHERE id=?').run(value,active,eligible,id);
    }else{
     const before=method==='PATCH'?db.prepare('SELECT * FROM purchasing_suppliers WHERE id=?').get(id):null;
     const details=[value,optional(b.contactName??before?.contact_name,120),optional(b.email??before?.email,200),optional(b.phone??before?.phone,80),optional(b.website??before?.website,500),active];
@@ -186,5 +191,5 @@ export function handlePurchasing(url,method,res,db,user,body){
    }
   }
   error(405,'This action is unavailable.');
- }catch(e){const conflict=e.code?.startsWith('SQLITE_CONSTRAINT');send(res,e.status|| (conflict?409:500),{message:e.status?e.message:conflict?'An item with these details already exists.':'Purchasing could not be saved.'});return true}
+ }catch(e){const conflict=e.code?.startsWith('SQLITE_CONSTRAINT')||/\b(?:UNIQUE|FOREIGN KEY|CHECK) constraint failed\b/i.test(e.message);send(res,e.status|| (conflict?409:500),{message:e.status?e.message:conflict?'An item with these details already exists.':'Purchasing could not be saved.'});return true}
 }

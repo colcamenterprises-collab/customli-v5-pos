@@ -19,8 +19,9 @@ export function migrateRecipeCosting(db){
  db.prepare('INSERT OR IGNORE INTO recipe_menu_links(recipe_id,product_id) SELECT id,product_id FROM food_recipes WHERE product_id IS NOT NULL').run();
 }
 export function costRecipe(db,recipe){
- const lines=db.prepare('SELECT l.*,i.name,i.pack_quantity,i.pack_unit,i.pack_cost_minor,i.active,i.category_id FROM recipe_cost_lines l JOIN food_ingredients i ON i.id=l.item_id WHERE l.recipe_id=? ORDER BY l.line_type,l.rowid').all(recipe.id);
- const costed=lines.map(l=>{const purchase=units[l.pack_unit],used=units[l.unit_used];const valid=!!purchase&&!!used&&purchase[0]===used[0];const quantityBase=valid?l.quantity*used[1]:null,packBase=l.pack_quantity*(purchase?.[1]||1);
+ const lines=db.prepare('SELECT l.*,i.name,i.pack_quantity,i.pack_unit,i.each_quantity,i.each_unit,i.pack_cost_minor,i.active,i.category_id FROM recipe_cost_lines l JOIN food_ingredients i ON i.id=l.item_id WHERE l.recipe_id=? ORDER BY l.line_type,l.rowid').all(recipe.id);
+ const costed=lines.map(l=>{const purchase=units[l.pack_unit],used=units[l.unit_used],contents=units[l.each_unit];const multi=l.pack_unit==='each'&&l.each_unit!=='each'&&!!contents;
+  const base=multi?contents[0]:purchase?.[0],valid=!!used&&(used[0]===base||multi&&l.unit_used==='each');const quantityBase=valid?(multi&&l.unit_used==='each'?l.quantity*l.each_quantity*contents[1]:l.quantity*used[1]):null,packBase=l.pack_quantity*(multi?l.each_quantity*contents[1]:purchase?.[1]||1);
   const price=valid?(l.manual_unit_cost_minor===null?Math.round(quantityBase/packBase*l.pack_cost_minor):Math.round(quantityBase*l.manual_unit_cost_minor)):null;
   return {...l,quantity_base:quantityBase,cost_minor:price===null?null:Math.round(price*(1+l.waste_percent/100)),cost_source:l.manual_unit_cost_minor===null?'purchasing':'manual'};
  });
@@ -36,11 +37,11 @@ function validate(db,input,existing=null){
  const name=string(input.name,120);if(!name)fail(400,'Enter a recipe name.');
  const yieldQuantity=positive(input.yieldQuantity,'yield quantity'),waste=percent(input.wastePercent,'waste percentage');
  if(!Array.isArray(input.lines)||!input.lines.length||input.lines.length>150)fail(400,'Add at least one ingredient or packaging item.');
- const lines=input.lines.map((line,index)=>{const item=db.prepare('SELECT i.*,c.name AS category FROM food_ingredients i LEFT JOIN purchasing_categories c ON c.id=i.category_id WHERE i.id=?').get(line.itemId);if(!item)fail(400,'Line '+(index+1)+': choose a purchasing item.');
+ const lines=input.lines.map((line,index)=>{const item=db.prepare('SELECT i.*,c.name AS category,c.recipe_eligible FROM food_ingredients i LEFT JOIN purchasing_categories c ON c.id=i.category_id WHERE i.id=?').get(line.itemId);if(!item)fail(400,'Line '+(index+1)+': choose a purchasing item.');
   if(!item.active&&!(existing?.id&&db.prepare('SELECT 1 FROM recipe_cost_lines WHERE recipe_id=? AND item_id=?').get(existing.id,item.id)))fail(400,'Line '+(index+1)+': this purchasing item is inactive.');
   const type=line.lineType==='packaging'?'packaging':line.lineType==='ingredient'?'ingredient':null;if(!type)fail(400,'Choose ingredient or packaging.');
-  if(['Admin','Cleaning'].includes(item.category))fail(400,'Line '+(index+1)+': this category is not used for recipes.');
-  const unit=line.unitUsed||item.base_unit;if(!units[unit]||units[unit][0]!==item.base_unit)fail(400,'Line '+(index+1)+': choose a matching measurement unit.');
+  if(item.recipe_eligible===0)fail(400,'Line '+(index+1)+': this category is not used for recipes.');
+  const unit=line.unitUsed||item.base_unit,multi=item.pack_unit==='each'&&item.each_unit!=='each';if(!units[unit]||(units[unit][0]!==item.base_unit&&!(multi&&unit==='each')))fail(400,'Line '+(index+1)+': choose a matching measurement unit.');
   return {itemId:item.id,lineType:type,quantity:positive(line.quantity,'quantity'),unitUsed:unit,wastePercent:percent(line.wastePercent,'waste percentage'),manualUnitCostMinor:minor(line.manualUnitCostMinor,'manual unit cost'),notes:string(line.notes,500)};
  });
  const productIds=[...new Set(input.productIds||[])];for(const id of productIds)if(!db.prepare('SELECT id FROM products WHERE id=?').get(id))fail(400,'Choose an existing menu item.');
@@ -54,7 +55,7 @@ function save(db,user,input,existing){const row=validate(db,input,existing),id=e
  else db.prepare('INSERT INTO food_recipes(id,name,yield_quantity,packaging_cost_minor,waste_percent,target_price_minor,product_id,instructions,updated_at,description,category,yield_unit,image_url,status,delivery_price_minor,direct_price_minor,suggested_price_minor,notes,historical_metadata,active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,row.name,row.yieldQuantity,row.packaging,row.waste,row.target,row.productIds[0]||null,row.instructions,now,row.description,row.category,row.yieldUnit,row.imageUrl,row.status,row.delivery,row.direct,row.suggested,row.notes,historical,row.active);
  db.prepare('DELETE FROM recipe_cost_lines WHERE recipe_id=?').run(id);db.prepare('DELETE FROM food_recipe_components WHERE recipe_id=?').run(id);db.prepare('DELETE FROM recipe_menu_links WHERE recipe_id=?').run(id);
  const add=db.prepare('INSERT INTO recipe_cost_lines VALUES(?,?,?,?,?,?,?,?,?)'),legacy=db.prepare('INSERT OR IGNORE INTO food_recipe_components(recipe_id,ingredient_id,quantity) VALUES(?,?,?)');
- for(const l of row.lines){add.run(randomUUID(),id,l.itemId,l.lineType,l.quantity,l.unitUsed,l.wastePercent,l.manualUnitCostMinor,l.notes);if(l.lineType==='ingredient')legacy.run(id,l.itemId,l.quantity*units[l.unitUsed][1])}
+ for(const l of row.lines){add.run(randomUUID(),id,l.itemId,l.lineType,l.quantity,l.unitUsed,l.wastePercent,l.manualUnitCostMinor,l.notes);if(l.lineType==='ingredient'){const item=db.prepare('SELECT pack_unit,each_unit,each_quantity FROM food_ingredients WHERE id=?').get(l.itemId);legacy.run(id,l.itemId,l.quantity*(item.pack_unit==='each'&&item.each_unit!=='each'&&l.unitUsed==='each'?item.each_quantity*units[item.each_unit][1]:units[l.unitUsed][1]))}}
  for(const productId of row.productIds)db.prepare('INSERT INTO recipe_menu_links VALUES(?,?)').run(id,productId);
  db.prepare('INSERT INTO food_model_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,'recipe',id,existing?'updated':'created',now);
  return costRecipe(db,db.prepare('SELECT * FROM food_recipes WHERE id=?').get(id));

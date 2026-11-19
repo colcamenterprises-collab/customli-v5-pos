@@ -78,6 +78,22 @@ test('new suppliers and categories join the same transaction as imported items',
  assert.equal(call(db,'/items').data.items[0].supplier,'Other supplier');
  assert.equal(call(db,'/items').data.items[0].category,'Packaging');
 });
+test('failed commit rolls back its new supplier, category, item and audit entries',()=>{
+ const db=fixture();const records=[{name:'Sleeve',brand:'House',supplier:'New supplier',supplierSku:'A',category:'New category',packQuantity:100,packUnit:'each',purchaseCost:10},{name:'Sleeve',brand:'House',supplier:'New supplier',supplierSku:'B',category:'New category',packQuantity:100,packUnit:'each',purchaseCost:12}];
+ const preview=call(db,'/import','POST',{records});assert.equal(preview.status,200);
+ const expected=preview.data.proposals.map(({action,id,updatedAt})=>({action,id,updatedAt}));
+ assert.equal(call(db,'/import','POST',{records,confirm:true,expected}).status,409);
+ assert.equal(call(db,'/items').data.items.length,0);
+ assert.equal(call(db,'/suppliers').data.suppliers.length,0);
+ assert.equal(call(db,'/categories').data.categories.some(x=>x.name==='New category'),false);
+ assert.equal(db.prepare("SELECT COUNT(*) AS n FROM food_model_audit WHERE entity_type='purchasing_item'").get().n,0);
+});
+test('renamed admin categories stay excluded from recipe selection',()=>{
+ const db=fixture(),category=call(db,'/categories').data.categories.find(x=>x.name==='Admin');assert.equal(category.recipe_eligible,0);
+ const renamed=call(db,'/categories/'+category.id,'PATCH',{name:'Office supplies',recipeEligible:false}).data.record;assert.equal(renamed.recipe_eligible,0);
+ const item=call(db,'/items','POST',{name:'Paper',categoryId:category.id,packQuantity:100,packUnit:'each',purchaseCost:40}).data.item;
+ assert.equal(item.recipe_eligible,0);
+});
 test('supplier price updates require exact SKU and retain recipe relationships',()=>{
  const db=fixture();const supplier=call(db,'/suppliers','POST',{name:'Makro'}).data.record;
  const item=call(db,'/items','POST',{name:'Bun',supplierId:supplier.id,supplierSku:'B-123',packQuantity:12,packUnit:'each',purchaseCost:120}).data.item;

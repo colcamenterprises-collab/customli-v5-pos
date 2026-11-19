@@ -33,3 +33,9 @@ test('checkout snapshots use purchasing and packaging cost for every linked menu
  const costs=d.prepare('SELECT per_item_cost_minor FROM order_item_cost_snapshots ORDER BY order_item_id').all().map(x=>x.per_item_cost_minor);
  assert.deepEqual(costs,[2800,3700]);
 });
+test('a case of bottles costs accurately by bottle or volume without changing pack details',()=>{
+ const d=db();d.exec("INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,each_quantity,each_unit,units_per_pack,updated_at) VALUES('water','Water case','ml',12,'each',14400,600,'ml',12,'2026-11-19')");
+ const saved=call(d,'','POST',{name:'Drink set',yieldQuantity:1,lines:[{itemId:'water',lineType:'ingredient',quantity:1,unitUsed:'each'}]});assert.equal(saved.status,201);assert.equal(saved.data.recipe.total_cost_minor,1200);
+ const updated=call(d,'/'+saved.data.recipe.id,'PATCH',{name:'Drink set',yieldQuantity:1,lines:[{itemId:'water',lineType:'ingredient',quantity:300,unitUsed:'ml'}]});assert.equal(updated.status,200);assert.equal(updated.data.recipe.total_cost_minor,600);
+ const pack=d.prepare("SELECT pack_quantity,units_per_pack,each_quantity,each_unit FROM food_ingredients WHERE id='water'").get();assert.deepEqual({...pack},{pack_quantity:12,units_per_pack:12,each_quantity:600,each_unit:'ml'});
+});
