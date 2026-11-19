@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {recordLegacyPriceChange} from './purchasing.mjs';
 // Adapted from the V3 recipe/yield/packaging/waste model; V5 data stays isolated.
 const out=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -39,7 +40,7 @@ const audit=(db,user,entityType,id,action)=>db.prepare('INSERT INTO food_model_a
 export function handleFoodModel(url,method,res,db,user,body){
  const path=url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');
  if(!path.startsWith('/food-model'))return false;
- if(user.role!=='Owner'){out(res,403,{message:'Owner access is required to manage food costs.'});return true;}
+ if(user.role!=='Owner'||user.permissions&&!user.permissions.has('operations.costing')){out(res,403,{message:'Owner access is required to manage food costs.'});return true;}
  try{
  const p=path.slice('/food-model'.length).split('/').filter(Boolean);
  if(method==='GET'&&p.join('/')==='ingredients'){
@@ -102,11 +103,17 @@ export function handleFoodModel(url,method,res,db,user,body){
   if(other)fail(409,'An ingredient with that name already exists.');
   // A unit-family change must never silently reinterpret existing recipe quantities.
   const existing=method==='PATCH'?db.prepare('SELECT base_unit FROM food_ingredients WHERE id=?').get(id):null;
-  if(existing&&existing.base_unit!==unit.base&&(db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(id)||db.prepare('SELECT 1 FROM food_modifier_ingredients WHERE ingredient_id=? LIMIT 1').get(id)))fail(409,'Remove this ingredient from recipes and modifier mappings before changing its measurement unit.');
+  if(existing&&existing.base_unit!==unit.base&&(db.prepare('SELECT 1 FROM food_recipe_components WHERE ingredient_id=? LIMIT 1').get(id)||(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get()&&db.prepare('SELECT 1 FROM recipe_cost_lines WHERE item_id=? LIMIT 1').get(id))||db.prepare('SELECT 1 FROM food_modifier_ingredients WHERE ingredient_id=? LIMIT 1').get(id)))fail(409,'Remove this ingredient from recipes and modifier mappings before changing its measurement unit.');
   const now=new Date().toISOString();
-  if(method==='PATCH')db.prepare('UPDATE food_ingredients SET name=?,base_unit=?,pack_quantity=?,pack_unit=?,pack_cost_minor=?,updated_at=? WHERE id=?').run(name,unit.base,packQuantity,packUnit,packCost,now,id);
-  else db.prepare('INSERT INTO food_ingredients VALUES(?,?,?,?,?,?,?)').run(id,name,unit.base,packQuantity,packUnit,packCost,now);
-  audit(db,user,'ingredient',id,method==='PATCH'?'updated':'created');out(res,200,{ingredient:db.prepare('SELECT * FROM food_ingredients WHERE id=?').get(id)});return true;
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   const prior=existing?db.prepare('SELECT pack_cost_minor FROM food_ingredients WHERE id=?').get(id):null;
+   if(method==='PATCH')db.prepare('UPDATE food_ingredients SET name=?,base_unit=?,pack_quantity=?,pack_unit=?,pack_cost_minor=?,updated_at=? WHERE id=?').run(name,unit.base,packQuantity,packUnit,packCost,now,id);
+   else db.prepare('INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at) VALUES(?,?,?,?,?,?,?)').run(id,name,unit.base,packQuantity,packUnit,packCost,now);
+   if(prior)recordLegacyPriceChange(db,user,id,prior.pack_cost_minor,packCost);
+   audit(db,user,'ingredient',id,method==='PATCH'?'updated':'created');db.exec('COMMIT');
+  }catch(e){db.exec('ROLLBACK');throw e}
+  out(res,200,{ingredient:db.prepare('SELECT * FROM food_ingredients WHERE id=?').get(id)});return true;
  }
  const name=label(record.name,'recipe name'),yieldQ=quantity(record.yieldQuantity,'recipe yield'),packaging=integer(record.packagingCostMinor||0,0,1000000000,'packaging cost'),waste=Number(record.wastePercent??0);
  if(!Number.isFinite(waste)||waste<0||waste>100)fail(400,'Waste must be between 0 and 100 percent.');
@@ -125,14 +132,18 @@ export function handleFoodModel(url,method,res,db,user,body){
  const id=method==='PATCH'?p[1]:randomUUID();if(method==='PATCH'&&!lookup(db,id))fail(404,'Recipe not found.');
  const conflicting=product?db.prepare('SELECT id FROM food_recipes WHERE product_id=? AND id<>?').get(product,id):null;
  if(conflicting)fail(409,'That menu item is already linked to another recipe.');
+ const hasLinks=!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_menu_links'").get();
+ if(product&&hasLinks&&db.prepare('SELECT 1 FROM recipe_menu_links WHERE product_id=? AND recipe_id<>?').get(product,id))fail(409,'That menu item is already linked to another recipe.');
  db.exec('BEGIN IMMEDIATE');
  try{
  const now=new Date().toISOString(),instructions=String(record.instructions||'').trim().slice(0,5000);
  if(method==='PATCH')db.prepare('UPDATE food_recipes SET name=?,yield_quantity=?,packaging_cost_minor=?,waste_percent=?,target_price_minor=?,product_id=?,instructions=?,updated_at=? WHERE id=?').run(name,yieldQ,packaging,waste,target,product,instructions,now,id);
- else db.prepare('INSERT INTO food_recipes VALUES(?,?,?,?,?,?,?,?,?)').run(id,name,yieldQ,packaging,waste,target,product,instructions,now);
+ else db.prepare('INSERT INTO food_recipes(id,name,yield_quantity,packaging_cost_minor,waste_percent,target_price_minor,product_id,instructions,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id,name,yieldQ,packaging,waste,target,product,instructions,now);
+ if(hasLinks){db.prepare('DELETE FROM recipe_menu_links WHERE recipe_id=?').run(id);if(product)db.prepare('INSERT INTO recipe_menu_links(recipe_id,product_id) VALUES(?,?)').run(id,product)}
  db.prepare('DELETE FROM food_recipe_components WHERE recipe_id=?').run(id);
+ if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get())db.prepare('DELETE FROM recipe_cost_lines WHERE recipe_id=?').run(id);
  const ins=db.prepare('INSERT INTO food_recipe_components VALUES(?,?,?)');
- for(const [ingredientId,amount] of resolved)ins.run(id,ingredientId,amount);
+ for(const [ingredientId,amount] of resolved){ins.run(id,ingredientId,amount);if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get()){const unit=db.prepare('SELECT base_unit FROM food_ingredients WHERE id=?').get(ingredientId).base_unit;db.prepare("INSERT INTO recipe_cost_lines(id,recipe_id,item_id,line_type,quantity,unit_used,waste_percent) VALUES(?,?,?,'ingredient',?,?,0)").run(randomUUID(),id,ingredientId,amount,unit)}}
  audit(db,user,'recipe',id,method==='PATCH'?'updated':'created');
  db.exec('COMMIT');
  }catch(e){db.exec('ROLLBACK');throw e;}
