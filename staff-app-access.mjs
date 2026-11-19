@@ -58,6 +58,8 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
   if (path.startsWith('/shift-expense-receipt/') || path.startsWith('/expenses')) {
     return dashboard && has('operations.expenses');
   }
+  if (path.startsWith('/recipe-costing')) return dashboard && has('operations.recipes') && has('operations.costing');
+  if (path.startsWith('/purchasing')) return dashboard && has(path.startsWith('/purchasing/suppliers') ? 'operations.suppliers' : 'operations.purchasing');
   if (path.startsWith('/food-model')) {
     const permission = ['ingredients', 'suppliers', 'purchasing', 'inventory'].find(key => path.startsWith('/food-model/' + key));
     return dashboard && (permission ? has('operations.' + (permission === 'ingredients' ? 'purchasing' : permission))

@@ -1,3 +1,4 @@
+import {costRecipe} from './recipe-costing.mjs';
 // Immutable recipe and modifier ingredient cost snapshots at point of sale.
 // All monetary values are integer THB satang. Unknown costs are never treated as zero.
 const units={g:1,kg:1000,ml:1,L:1000,each:1};
@@ -20,14 +21,19 @@ export function migrateSaleCosts(db){
   PRIMARY KEY(option_id,ingredient_id));`);
 }
 export function snapshotSaleCost(db,lineId,productId,qty){
- const recipe=db.prepare('SELECT * FROM food_recipes WHERE product_id=?').get(productId);
+ const hasLines=!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_cost_lines'").get();
+ const recipe=hasLines?db.prepare('SELECT r.* FROM food_recipes r LEFT JOIN recipe_menu_links l ON l.recipe_id=r.id WHERE r.product_id=? OR l.product_id=? LIMIT 1').get(productId,productId):db.prepare('SELECT * FROM food_recipes WHERE product_id=?').get(productId);
  const mods=db.prepare('SELECT option_id,option_name,quantity FROM order_item_modifiers WHERE order_item_id=?').all(lineId);
  let complete=true,reason='',components=[],unitCost=null;
  if(!recipe){complete=false;reason='No linked recipe';}
  else{
+  const current=hasLines?costRecipe(db,recipe):null;
   const ingredients=db.prepare('SELECT i.*,c.quantity FROM food_recipe_components c JOIN food_ingredients i ON i.id=c.ingredient_id WHERE c.recipe_id=?').all(recipe.id);
-  if(!ingredients.length){complete=false;reason='Recipe has no ingredient quantities';}
-  else{
+  if(hasLines&&current?.lines.length){
+   if(current.cost_per_serve_minor===null){complete=false;reason='Recipe has incomplete costing lines';}
+   else{components=current.lines.map(l=>({ingredient_id:l.item_id,name:l.name,quantity:l.quantity,unit:l.unit_used,line_type:l.line_type,cost_minor:l.cost_minor,cost_source:l.cost_source}));unitCost=current.cost_per_serve_minor;}
+  }else if(!ingredients.length){complete=false;reason='Recipe has no ingredient quantities';}
+  else if(!hasLines||!current?.lines.length){
    components=ingredients.map(r=>({ingredient_id:r.id,name:r.name,quantity:r.quantity,cost_minor:costOf(r,r.quantity)}));
    let batch=components.reduce((n,r)=>n+r.cost_minor,0)+recipe.packaging_cost_minor;
    unitCost=Math.round(Math.round(batch*(1+recipe.waste_percent/100))/recipe.yield_quantity);
