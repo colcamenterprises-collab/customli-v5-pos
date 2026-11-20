@@ -60,6 +60,7 @@ test('count drafts distinguish blank from zero and enforce tenant and location',
  assert.equal(call(db,'/counts/'+id+'/submit','POST').status,409);
  assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:0}]}).status,200);
  assert.equal(call(db,'/counts/'+id+'/submit','POST').status,200);
+ assert.equal(call(db,'/counts/'+id).body.count.actor_id,'owner');
  assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:4}]}).status,409);
  assert.deepEqual(call(db,'/counts','GET',{},staff).body.counts,[]);
  assert.equal(call(db,'/counts/'+id,'GET',{},staff).status,403);
@@ -67,6 +68,30 @@ test('count drafts distinguish blank from zero and enforce tenant and location',
  assert.equal(call(db,'/counts/'+id,'GET',{}, {id:'other',role:'Owner',tenantId:'b',device:{locationId:'one'}}).status,404);
  assert.equal(call(db,'/counts/'+id,'GET',{}, {id:'other',role:'Owner',tenantId:'a',device:{locationId:'two'}}).status,404);
  assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
+});
+test('checklist shift verification rejects cross-tenant and missing scope',()=>{
+ const db=fixture(),staff={id:'cook',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.closing.checklist'])};
+ const oldTenant=process.env.PLATFORM_TENANT_ID,oldLocation=process.env.PLATFORM_LOCATION_ID;
+ try{
+  delete process.env.PLATFORM_TENANT_ID;delete process.env.PLATFORM_LOCATION_ID;
+  assert.equal(call(db,'/shift/shift','GET',{},staff).status,503);
+  process.env.PLATFORM_TENANT_ID='a';process.env.PLATFORM_LOCATION_ID='one';
+  assert.equal(call(db,'/shift/shift','GET',{},staff).body.shift.id,'shift');
+  assert.equal(call(db,'/shift/shift','GET',{}, {...staff,permissions:new Set()}).status,403);
+  assert.equal(call(db,'/shift/shift','GET',{}, {...staff,tenantId:'other'}).status,403);
+  assert.equal(call(db,'/shift/shift','GET',{}, {...staff,device:{locationId:'two'}}).status,403);
+  assert.equal(call(db,'/shift/missing','GET',{},staff).status,404);
+ }finally{if(oldTenant===undefined)delete process.env.PLATFORM_TENANT_ID;else process.env.PLATFORM_TENANT_ID=oldTenant;if(oldLocation===undefined)delete process.env.PLATFORM_LOCATION_ID;else process.env.PLATFORM_LOCATION_ID=oldLocation}
+});
+test('a second authorised staff member completes a shared draft and receives submission credit',()=>{
+ const db=fixture(),staff={id:'cook',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.count'])};
+ call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg'});
+ const id=call(db,'/counts','POST',{shiftId:'shift'}).body.id;
+ assert.equal(call(db,'/counts','GET',{},staff).body.counts[0].id,id);
+ assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:2}]},staff).status,200);
+ assert.equal(call(db,'/counts/'+id+'/submit','POST',{},staff).status,200);
+ assert.equal(call(db,'/counts/'+id).body.count.actor_id,'cook');
+ assert.equal(call(db,'/counts/'+id).body.entries[0].actor_id,'cook');
 });
 test('manual receipts cannot bypass purchase receiving; sale snapshots do not restore refunded stock',()=>{const db=fixture();const buyer={id:'buyer',role:'Manager',tenantId:'a',device:{locationId:'one'}};
  assert.equal(call(db,'/movements','POST',{kind:'receipt',itemId:'beef',quantity:5,unit:'kg',idempotencyKey:'invoice:1',shiftId:'shift'},buyer).status,400);
@@ -94,6 +119,8 @@ test('physical counts calculate interval variance and produce pack-rounded requi
  db.prepare('INSERT INTO order_item_cost_snapshots VALUES(?,?,?,?,?)').run('line',120,1,'',JSON.stringify([{ingredient_id:'beef',stock_base_per_item:90}]));
  db.exec("INSERT INTO shifts VALUES('next','2026-11-20T04:00:00Z',NULL,0)");
  const second=call(db,'/counts','POST',{shiftId:'next'}).body.id;
+ assert.equal(call(db,'/requisitions','POST',{shiftId:'shift',countId:first}).status,201);
+ assert.equal(call(db,'/requisitions','POST',{shiftId:'shift',countId:second}).status,409);
  call(db,'/counts/'+second+'/entries','PUT',{entries:[{itemId:'beef',quantity:3.2}]});call(db,'/counts/'+second+'/submit','POST');
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T05:00:00Z' WHERE id=?").run(second);
  const result=stockVariance(db,{tenant:'a',location:'one'},second,'beef');

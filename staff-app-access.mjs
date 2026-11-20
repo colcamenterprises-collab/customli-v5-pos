@@ -64,6 +64,7 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
   if (path.startsWith('/stock-control')) {
     const parts = path.slice('/stock-control/'.length).split('/');
     const resource = parts[0], action = parts[2];
+    if (resource === 'shift' && read) return (pos || dashboard) && has('operations.closing.checklist');
     if (resource === 'purchases' && read) return (pos || dashboard) &&
       (has('operations.stock.purchase') || has('operations.stock.receive'));
     const permission = resource === 'settings' ? read ? 'operations.stock.count' : 'operations.stock.configure'

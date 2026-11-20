@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import ClosingWorkspace from '../closing-workspace.jsx';
 
 const item={id:'roll',name:'Burger rolls',base_unit:'each',pack_unit:'each',pack_quantity:12,each_unit:'each',each_quantity:1,count_unit:'each',count_enabled:1,requisition_enabled:1,active:1};
-const state={reconciliation:null,count:null,entries:[],requisition:null,requestItems:[]};
+const state={reconciliation:null,count:null,entries:[],requisition:null,requestItems:[],checklist:null,checklistResponses:[]};
 window.closingFixture={calls:[],offline:false,state};
 const failure=message=>{throw Object.assign(new Error(message),{status:409})};
 async function request(path,method='GET',body){
@@ -45,4 +45,13 @@ async function request(path,method='GET',body){
  }
  throw Error('Unexpected request '+method+' '+path);
 }
-createRoot(document.getElementById('root')).render(<ClosingWorkspace request={request} shift={{id:'shift',opened_at:'2026-11-20T10:00:00Z'}} user={{tenantId:'tenant',device:{locationId:'location'},permissions:['operations.closing.reconcile','operations.stock.count','operations.stock.requisition']}}/>);
+async function checklistRequest(path,method='GET',body){
+ window.closingFixture.calls.push({path:'/kitchen-ready'+path,method,body});if(window.closingFixture.offline)throw Error('Network unavailable');
+ if(path==='/templates')return [{id:'template',name_en:'Closing checks'}];
+ if(path==='/runs'&&method==='POST'){state.checklist??={id:'run',template_id:'template',shift_id:body.shiftId};return {id:'run'}};
+ if(path==='/runs/run')return {run:state.checklist,items:[{id:'grill',label_en:'Grill cleaned',reading_required:1,photo_required:0}],responses:state.checklistResponses,evidence:[]};
+ if(path==='/runs/run/respond'){state.checklistResponses=[{item_id:body.itemId,...body}];return {ok:true}};
+ if(path==='/runs/run/complete'){state.checklist.completed_at=new Date().toISOString();return {ok:true}};
+ throw Error('Unexpected checklist request '+method+' '+path);
+}
+createRoot(document.getElementById('root')).render(<ClosingWorkspace request={request} checklistRequest={checklistRequest} shift={{id:'shift',opened_at:'2026-11-20T10:00:00Z'}} user={{id:'staff',tenantId:'tenant',device:{locationId:'location'},permissions:['operations.closing.reconcile','operations.closing.checklist','operations.stock.count','operations.stock.requisition']}}/>);

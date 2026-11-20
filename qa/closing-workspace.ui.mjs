@@ -29,6 +29,15 @@ try{
  await page.evaluate(()=>{window.closingFixture.offline=false});
  await page.getByRole('button',{name:'Sales submitted'}).waitFor({timeout:12000});
  assert.equal(await page.evaluate(()=>window.closingFixture.state.reconciliation.payload.cashMinor),12000);
+ await page.getByRole('button',{name:'Cleaning',exact:true}).click();
+ await page.getByLabel('Checklist').selectOption('template');
+ await page.getByRole('button',{name:'Start checklist'}).click();
+ await page.getByText('Grill cleaned').waitFor();
+ await page.getByLabel('Result').selectOption('compliant');
+ await page.getByLabel('Reading').fill('4.2');
+ await page.getByRole('button',{name:'Submit cleaning checklist'}).click();
+ await page.getByRole('button',{name:'Checklist submitted'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.closingFixture.state.checklist.shift_id),'shift');
  await page.getByRole('button',{name:'Stock count'}).click();
  await page.getByText('0 of 1 counted').waitFor();
  await page.evaluate(()=>{window.closingFixture.offline=true});
@@ -56,7 +65,7 @@ try{
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow at '+width);
  }
  assert.deepEqual(errors,[]);
- console.log('PASS closing workspace: blind sales, offline submission retry, zero count, requisition, responsive widths');
+ console.log('PASS closing workspace: blind sales, cleaning, offline retry, zero count, requisition, responsive widths');
 }finally{
  await browser?.close();server.kill('SIGTERM');
 }
