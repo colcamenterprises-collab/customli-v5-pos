@@ -1,0 +1,41 @@
+import {randomUUID} from 'node:crypto';
+
+const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
+const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))};
+const permitted=(user,key)=>user.permissions?user.permissions.has(key):['Owner','Manager'].includes(user.role);
+const scope=user=>{const tenant=user.tenantId||process.env.PLATFORM_TENANT_ID,location=user.device?.locationId||process.env.PLATFORM_LOCATION_ID;if(!tenant||!location||process.env.PLATFORM_TENANT_ID&&tenant!==process.env.PLATFORM_TENANT_ID||process.env.PLATFORM_LOCATION_ID&&location!==process.env.PLATFORM_LOCATION_ID)fail(403,'A restaurant location is required.');return {tenant,location}};
+const integer=(value,label)=>{if(!Number.isSafeInteger(value)||value<0||value>1e11)fail(400,'Enter a valid '+label+'.');return value};
+const count=value=>{if(!Number.isSafeInteger(value)||value<0||value>1e7)fail(400,'Enter a valid receipt count.');return value};
+const summary=(db,shiftId)=>{
+ const shift=db.prepare('SELECT * FROM shifts WHERE id=?').get(shiftId);
+ const orders=db.prepare("SELECT id,channel_id,payment_method,total,discount_total FROM orders WHERE shift_id=? AND status IN ('paid','refunded')").all(shiftId);
+ const refunds=db.prepare('SELECT r.order_id,r.payment_method,r.amount,o.channel_id FROM refunds r JOIN orders o ON o.id=r.order_id WHERE o.shift_id=?').all(shiftId);
+ const channels={},methods={};
+ for(const o of orders){const channel=o.channel_id||'in-store',method=o.payment_method;channels[channel]??={count:0,minor:0};methods[method]??={count:0,minor:0};channels[channel].count++;methods[method].count++;channels[channel].minor+=o.total-o.discount_total;methods[method].minor+=o.total-o.discount_total}
+ for(const r of refunds){channels[r.channel_id||'in-store'].minor-=r.amount;methods[r.payment_method]??={count:0,minor:0};methods[r.payment_method].minor-=r.amount}
+ const movement=db.prepare("SELECT COALESCE(SUM(CASE direction WHEN 'in' THEN amount ELSE -amount END),0) minor FROM shift_cash_movements WHERE shift_id=?").get(shiftId).minor;
+ const cashSales=orders.filter(o=>o.payment_method==='Cash').reduce((n,o)=>n+o.total-o.discount_total,0);
+ const cashRefunds=refunds.filter(r=>r.payment_method==='Cash').reduce((n,r)=>n+r.amount,0);
+ return {channels,methods,openingCashMinor:shift.opening_cash,cashSalesMinor:cashSales,cashRefundsMinor:cashRefunds,movementsMinor:movement,expectedCashBeforeBankingMinor:shift.opening_cash+cashSales-cashRefunds+movement,closingCashMinor:shift.closing_cash};
+};
+
+export function migrateShiftReconciliation(db){db.exec(`CREATE TABLE IF NOT EXISTS shift_reconciliations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,location_id TEXT NOT NULL,shift_id TEXT NOT NULL REFERENCES shifts(id),status TEXT NOT NULL CHECK(status IN ('draft','submitted')),actor_id TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,submitted_at TEXT,UNIQUE(tenant_id,location_id,shift_id));
+ CREATE TABLE IF NOT EXISTS shift_reconciliation_audit(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,location_id TEXT NOT NULL,reconciliation_id TEXT NOT NULL REFERENCES shift_reconciliations(id),actor_id TEXT NOT NULL,action TEXT NOT NULL,previous_json TEXT NOT NULL,next_json TEXT NOT NULL,created_at TEXT NOT NULL);`)}
+const audit=(db,s,user,r,action,previous,next)=>db.prepare('INSERT INTO shift_reconciliation_audit VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),s.tenant,s.location,r,user.id,action,JSON.stringify(previous??null),JSON.stringify(next??null),new Date().toISOString());
+
+export function handleShiftReconciliation(url,method,res,db,user,body){
+ const path=url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');if(!path.startsWith('/shift-reconciliation'))return false;
+ try{
+  const s=scope(user),parts=path.slice('/shift-reconciliation'.length).split('/').filter(Boolean),shiftId=parts[0];
+  if(!permitted(user,'operations.closing.reconcile'))fail(403,'Closing reconciliation is not assigned to your account.');
+  const shift=db.prepare('SELECT id FROM shifts WHERE id=?').get(shiftId);if(!shift)fail(404,'Shift not found.');
+  const existing=()=>db.prepare('SELECT * FROM shift_reconciliations WHERE tenant_id=? AND location_id=? AND shift_id=?').get(s.tenant,s.location,shiftId);
+  const available=()=>({channels:db.prepare('SELECT id,name FROM sales_channels WHERE active=1 ORDER BY sort_order,name').all(),methods:db.prepare('SELECT DISTINCT name FROM (SELECT payment_method AS name FROM orders WHERE shift_id=? UNION SELECT r.payment_method AS name FROM refunds r JOIN orders o ON o.id=r.order_id WHERE o.shift_id=?) ORDER BY name').all(shiftId,shiftId)});
+  if(method==='GET'&&!parts[1]){const row=existing();return send(res,200,{reconciliation:row?{...row,payload:JSON.parse(row.payload_json),payload_json:undefined}:null,available:available()})}
+  if(method==='GET'&&parts[1]==='report'){if(!permitted(user,'operations.closing.financial'))fail(403,'Financial reconciliation access is required.');const row=existing();if(!row||row.status!=='submitted')fail(404,'Submitted reconciliation not found.');const staff=JSON.parse(row.payload_json),system=summary(db,shiftId),channelDifference={},paymentDifference={};for(const [key,actual] of Object.entries(system.channels))channelDifference[key]={receipts:(staff.channels[key]?.count??0)-actual.count,minor:(staff.channels[key]?.minor??0)-actual.minor};for(const [key,actual] of Object.entries(system.methods))paymentDifference[key]={receipts:(staff.methods[key]?.count??0)-actual.count,minor:(staff.methods[key]?.minor??0)-actual.minor};return send(res,200,{staff,system,channelDifference,paymentDifference,cashDifferenceMinor:staff.cashMinor+staff.bankMinor-system.expectedCashBeforeBankingMinor,actorId:row.actor_id,submittedAt:row.submitted_at})}
+  if(method==='PUT'||method==='POST'&&parts[1]==='submit'){
+   const b=body||{},old=existing();if(old?.status==='submitted'){if(method==='POST')return send(res,200,{reconciliation:{id:old.id,status:'submitted',submittedAt:old.submitted_at}});fail(409,'Submitted reconciliation is immutable.')}const configured=available(),channelIds=new Set(configured.channels.map(c=>c.id)),methodNames=new Set(configured.methods.map(m=>m.name));const entries=(source,keys)=>{if(!source||typeof source!=='object'||Array.isArray(source)||Object.keys(source).some(k=>!keys.has(k)))fail(400,'Choose configured channels and payment methods.');return Object.fromEntries(Object.entries(source).map(([k,v])=>[k,{count:count(v?.count),minor:integer(v?.minor,'sales total')}]))};const payload={channels:entries(b.channels||{},channelIds),methods:entries(b.methods||{},methodNames),cashMinor:b.cashMinor==null&&method==='PUT'?null:integer(b.cashMinor,'cash count'),bankMinor:integer(b.bankMinor??0,'banked cash'),bankReference:String(b.bankReference||'').trim().slice(0,120),notes:String(b.notes||'').trim().slice(0,1000)};if(method==='POST'&&(configured.channels.some(c=>!Object.hasOwn(payload.channels,c.id))||configured.methods.some(m=>!Object.hasOwn(payload.methods,m.name))))fail(409,'Enter the independent totals for every channel and payment method.');const id=old?.id||randomUUID(),at=new Date().toISOString(),status=method==='POST'?'submitted':'draft';db.exec('BEGIN IMMEDIATE');try{db.prepare(`INSERT INTO shift_reconciliations VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(tenant_id,location_id,shift_id) DO UPDATE SET status=excluded.status,actor_id=excluded.actor_id,payload_json=excluded.payload_json,updated_at=excluded.updated_at,submitted_at=excluded.submitted_at`).run(id,s.tenant,s.location,shiftId,status,user.id,JSON.stringify(payload),old?.created_at||at,at,status==='submitted'?at:null);audit(db,s,user,id,status==='submitted'?'submitted':'draft_saved',old?.payload_json?JSON.parse(old.payload_json):null,payload);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(res,200,{reconciliation:{id,status,submittedAt:status==='submitted'?at:null}})
+  }
+  fail(405,'This reconciliation action is unavailable.');
+ }catch(e){send(res,e.status||500,{message:e.status?e.message:'Reconciliation could not complete this request.'})}return true;
+}

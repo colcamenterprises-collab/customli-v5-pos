@@ -59,6 +59,8 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
     return dashboard && has('operations.expenses');
   }
   if (path.startsWith('/recipe-costing')) return dashboard && has('operations.recipes') && has('operations.costing');
+  if (path.startsWith('/shift-reconciliation')) return (pos || dashboard) && has('operations.closing.reconcile') &&
+    (!path.endsWith('/report') || has('operations.closing.financial'));
   if (path.startsWith('/stock-control')) {
     const parts = path.slice('/stock-control/'.length).split('/');
     const resource = parts[0], action = parts[2];

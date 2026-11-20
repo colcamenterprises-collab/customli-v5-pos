@@ -9,7 +9,7 @@ const yes=v=>v===true||v===1?1:0;
 const respond=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))};
 const audit=(db,scope,user,entity,id,action,previous,next)=>db.prepare('INSERT INTO stock_audit VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),scope.tenant,scope.location,entity,id,user.id,action,JSON.stringify(previous??null),JSON.stringify(next??null),now());
 const transaction=(db,fn)=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result}catch(e){db.exec('ROLLBACK');throw e}};
-const scopeFor=user=>{const tenant=user.tenantId||process.env.PLATFORM_TENANT_ID,location=user.device?.locationId||process.env.PLATFORM_LOCATION_ID;if(!tenant||!location)fail(403,'A restaurant location is required.');return {tenant,location}};
+const scopeFor=user=>{const tenant=user.tenantId||process.env.PLATFORM_TENANT_ID,location=user.device?.locationId||process.env.PLATFORM_LOCATION_ID;if(!tenant||!location||process.env.PLATFORM_TENANT_ID&&tenant!==process.env.PLATFORM_TENANT_ID||process.env.PLATFORM_LOCATION_ID&&location!==process.env.PLATFORM_LOCATION_ID)fail(403,'A restaurant location is required.');return {tenant,location}};
 const allowed=(user,permission)=>user.permissions?user.permissions.has(permission):user.role==='Owner'||user.role==='Manager';
 const requirePermission=(user,permission)=>{if(!allowed(user,permission))fail(403,'This stock action is not assigned to your account.')};
 const item=(db,id)=>{const row=db.prepare('SELECT * FROM food_ingredients WHERE id=? AND active=1').get(id);if(!row)fail(404,'Purchasing item not found.');return row};
