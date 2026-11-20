@@ -77,6 +77,10 @@ test('partial receiving adds usable stock once and updates current purchase cost
  const duplicate=call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:180000}]},buyer);assert.equal(duplicate.status,200);
  assert.equal(call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:9,unit:'kg',totalPriceMinor:180000}]},buyer).status,409);
  const line=call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},buyer).body.lines[0];
+ const receiver={id:'receiver',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.receive'])};
+ const receiverView=call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},receiver);
+ assert.equal(receiverView.status,200);assert.equal(Object.hasOwn(receiverView.body.lines[0],'total_price_minor'),false);
+ assert.equal(call(db,'/purchases','POST',{idempotencyKey:'unauthorized',lines:[{itemId:'beef',quantity:1,unit:'kg',totalPriceMinor:30000}]},receiver).status,403);
  const part={lineId:line.id,usableQuantity:2,rejectedQuantity:.5,unit:'kg',idempotencyKey:'delivery-one',shiftId:'shift'};
  assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',part,buyer).status,201);
  assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',part,buyer).status,200);
