@@ -69,6 +69,9 @@ test('trial recipe costs manual ingredients without purchasing records and later
  assert.equal(d.prepare('SELECT COUNT(*) AS n FROM manual_recipe_cost_lines').get().n,1);
  assert.equal(d.prepare('SELECT COUNT(*) AS n FROM food_recipe_components').get().n,0);
  assert.equal(call(d,'/'+id).data.recipe.lines[0].name,'Pineapple rings');
+ const legacyRead=(path,method='GET',body={})=>{const res={writeHead(status){this.status=status},end(payload){this.data=JSON.parse(payload)}};handleFoodModel(new URL('http://localhost/v5/api/food-model'+path),method,res,d,owner,body);return res};
+ const legacyCost=legacyRead('/recipes/'+id);assert.equal(legacyCost.status,200);assert.equal(legacyCost.data.recipe.cost_per_serve_minor,1100);assert.equal(legacyCost.data.recipe.cost_status,'calculated');assert.equal(legacyCost.data.recipe.has_manual_lines,true);
+ assert.equal(legacyRead('/menu-costing').data.linked_recipes[0].cost_per_serve_minor,1100);
  migrateRecipeCosting(d);assert.equal(d.prepare('SELECT COUNT(*) AS n FROM manual_recipe_cost_lines').get().n,1);
  d.exec("INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at) VALUES('pineapple','Pineapple rings','each',6,'each',7200,'2026-11-20')");
  const legacy={writeHead(status){this.status=status},end(payload){this.data=JSON.parse(payload)}};handleFoodModel(new URL('http://localhost/v5/api/food-model/recipes/'+id),'PATCH',legacy,d,owner,{name:'Pineapple test',yieldQuantity:1,components:[{ingredientId:'pineapple',quantity:1}]});assert.equal(legacy.status,409);
@@ -76,6 +79,14 @@ test('trial recipe costs manual ingredients without purchasing records and later
  assert.equal(linked.status,200);assert.equal(linked.data.recipe.cost_per_serve_minor,1320);
  assert.equal(d.prepare('SELECT COUNT(*) AS n FROM manual_recipe_cost_lines').get().n,0);
  assert.equal(d.prepare('SELECT COUNT(*) AS n FROM food_recipe_components').get().n,1);
+});
+test('a manual-only trial recipe is publishable with authoritative cost',()=>{
+ const d=db();d.exec("ALTER TABLE products ADD COLUMN category TEXT;CREATE TABLE categories(id TEXT PRIMARY KEY,name TEXT,active INTEGER);INSERT INTO categories VALUES('burgers','Burgers',1)");
+ const input={name:'Pineapple trial',yieldQuantity:1,lines:[{manual:true,manualName:'Pineapple rings',lineType:'ingredient',quantity:1,unitUsed:'each',manualPackQuantity:6,manualPackUnit:'each',manualPackCostMinor:6000}]};
+ const created=call(d,'','POST',input);assert.equal(created.status,201);const id=created.data.recipe.id;
+ const res={writeHead(status){this.status=status},end(payload){this.data=JSON.parse(payload)}};
+ handleFoodModel(new URL('http://localhost/v5/api/food-model/recipes/'+id+'/publish'),'POST',res,d,owner,{name:'Pineapple Burger',category:'Burgers',priceMinor:18000});
+ assert.equal(res.status,201);assert.equal(res.data.recipe.cost_per_serve_minor,1000);assert.equal(d.prepare('SELECT COUNT(*) AS n FROM products').get().n,1);
 });
 test('manual costing rejects mismatched units, missing prices and unauthorized access',()=>{
  const d=db(),base={name:'Trial',yieldQuantity:1,lines:[{manual:true,manualName:'Sauce',lineType:'ingredient',quantity:20,unitUsed:'g',manualPackQuantity:1,manualPackUnit:'kg',manualPackCostMinor:10000}]};
@@ -107,4 +118,5 @@ test('mixed manual ingredient, purchasing item and manual packaging keep entered
  d.exec("UPDATE food_ingredients SET pack_cost_minor=40000 WHERE id='bacon'");
  const current=call(d,'/'+created.data.recipe.id).data.recipe;
  assert.equal(current.total_cost_minor,2700);assert.deepEqual(current.lines.map(x=>x.name),['Pineapple','Bacon','Trial box']);
+ const legacy={writeHead(status){this.status=status},end(payload){this.data=JSON.parse(payload)}};handleFoodModel(new URL('http://localhost/v5/api/food-model/recipes/'+created.data.recipe.id),'GET',legacy,d,owner,{});assert.equal(legacy.status,200);assert.equal(legacy.data.recipe.total_cost_minor,2700);assert.equal(legacy.data.recipe.has_manual_lines,true);
 });

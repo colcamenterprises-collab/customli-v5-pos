@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {recordLegacyPriceChange} from './purchasing.mjs';
+import {costRecipe} from './recipe-costing.mjs';
 // Adapted from the V3 recipe/yield/packaging/waste model; V5 data stays isolated.
 const out=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));};
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -27,14 +28,16 @@ export function migrateFoodModel(db){
 const costed=(db,recipe)=>{
  const lines=db.prepare('SELECT c.ingredient_id,i.name,i.base_unit,i.pack_unit,i.pack_quantity,i.pack_cost_minor,c.quantity FROM food_recipe_components c JOIN food_ingredients i ON i.id=c.ingredient_id WHERE c.recipe_id=? ORDER BY i.name COLLATE NOCASE').all(recipe.id);
  const components=lines.map(l=>{const packBase=l.pack_quantity*units[l.pack_unit].multiplier;const costMinor=Math.round(l.quantity/packBase*l.pack_cost_minor);return {...l,cost_minor:costMinor,pack_base_quantity:packBase};});
- const calculated=components.length>0;
- const base=calculated?components.reduce((s,l)=>s+l.cost_minor,0)+recipe.packaging_cost_minor:null;
- const batch=calculated?Math.round(base*(1+recipe.waste_percent/100)):null;
- const perServe=calculated?Math.round(batch/recipe.yield_quantity):null;
+ const costingTables=db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('recipe_cost_lines','manual_recipe_cost_lines')").get().n===2;
+ const authoritative=costingTables&&db.prepare('SELECT 1 FROM recipe_cost_lines WHERE recipe_id=? UNION ALL SELECT 1 FROM manual_recipe_cost_lines WHERE recipe_id=? LIMIT 1').get(recipe.id,recipe.id)?costRecipe(db,recipe):null;
+ const calculated=authoritative?authoritative.total_cost_minor!==null:components.length>0;
+ const base=components.reduce((s,l)=>s+l.cost_minor,0)+recipe.packaging_cost_minor;
+ const batch=authoritative?authoritative.total_cost_minor:calculated?Math.round(base*(1+recipe.waste_percent/100)):null;
+ const perServe=authoritative?authoritative.cost_per_serve_minor:calculated?Math.round(batch/recipe.yield_quantity):null;
  const current=db.prepare('SELECT id,name,price FROM products WHERE id=? AND active=1').get(recipe.product_id)||null;
  const sell=current?.price??recipe.target_price_minor??null;
  const margin=perServe!==null&&sell>0?Math.round((sell-perServe)/sell*10000)/100:null;
- return {...recipe,product:current,components,total_cost_minor:batch,cost_per_serve_minor:perServe,selling_price_minor:sell,estimated_gross_profit_minor:perServe!==null&&sell!==null?sell-perServe:null,estimated_food_cost_percent:perServe!==null&&sell>0?Math.round(perServe/sell*10000)/100:null,estimated_gross_margin_percent:margin,cost_status:calculated?'calculated':'incomplete'};
+ return {...recipe,product:current,components,has_manual_lines:authoritative?.lines.some(l=>!l.item_id)||false,total_cost_minor:batch,cost_per_serve_minor:perServe,selling_price_minor:sell,estimated_gross_profit_minor:perServe!==null&&sell!==null?sell-perServe:null,estimated_food_cost_percent:perServe!==null&&sell>0?Math.round(perServe/sell*10000)/100:null,estimated_gross_margin_percent:margin,cost_status:calculated?'calculated':'incomplete'};
 };
 const audit=(db,user,entityType,id,action)=>db.prepare('INSERT INTO food_model_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,entityType,id,action,new Date().toISOString());
 export function handleFoodModel(url,method,res,db,user,body){
