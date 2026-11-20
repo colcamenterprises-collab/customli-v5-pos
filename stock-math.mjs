@@ -14,8 +14,11 @@ export function toBase(item,quantity,unit){
  }
  const direct=simple[unit];
  if(direct){if(direct[0]!==base)fail('This measurement is incompatible with the item.');return round(n*direct[1])}
- if(unit!==item.pack_unit&&!packaging.has(unit))fail('Choose a supported measurement.');
- if(unit!==item.pack_unit)fail('Configure this packaging unit for the item first.');
+ if(packaging.has(unit)){
+  if(String(item.pack_type||'').trim().toLowerCase()!==unit)fail('Configure this packaging unit for the item first.');
+  return round(n*purchasePackBase(item));
+ }
+ if(unit!==item.pack_unit)fail('Choose a supported measurement.');
  const pack=simple[item.pack_unit],each=simple[item.each_unit];
  if(!pack||!each)fail('The purchasing item has an invalid pack conversion.');
  const factor=item.pack_unit==='each'&&item.each_unit!=='each'

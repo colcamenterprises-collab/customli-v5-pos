@@ -36,6 +36,8 @@ test('staff draft and submission remain blind; owner sees separate channel and t
  assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
 });
 test('tenant and location isolate reconciliation, and submitted values are immutable',()=>{const db=fixture();call(db,staff,'/night/submit','POST',payload);
+ assert.equal(call(db,owner,'').body.reconciliations.length,1);
+ assert.equal(call(db,staff,'').status,403);
  const otherTenant={...owner,tenantId:'other'},otherLocation={...owner,device:{locationId:'other'}};
  assert.equal(call(db,otherTenant,'/night/report').status,404);
  assert.equal(call(db,otherLocation,'/night/report').status,404);

@@ -1,0 +1,46 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import ClosingWorkspace from '../closing-workspace.jsx';
+
+const item={id:'roll',name:'Burger rolls',base_unit:'each',pack_unit:'each',pack_quantity:12,each_unit:'each',each_quantity:1,count_unit:'each',count_enabled:1,requisition_enabled:1,active:1};
+const state={reconciliation:null,count:null,entries:[],requisition:null,requestItems:[]};
+window.closingFixture={calls:[],offline:false,state};
+const failure=message=>{throw Object.assign(new Error(message),{status:409})};
+async function request(path,method='GET',body){
+ window.closingFixture.calls.push({path,method,body});
+ if(window.closingFixture.offline)throw Error('Network unavailable');
+ if(path==='/shift-reconciliation/shift'){
+  if(method==='GET')return {reconciliation:state.reconciliation,available:{channels:[{id:'direct',name:'Direct'}],methods:[{name:'Cash'}]}};
+  if(state.reconciliation?.status==='submitted')failure('Submitted reconciliation is immutable.');
+  state.reconciliation={status:'draft',payload:body};return {reconciliation:state.reconciliation};
+ }
+ if(path==='/shift-reconciliation/shift/submit'){
+  state.reconciliation={status:'submitted',payload:body};return {reconciliation:state.reconciliation};
+ }
+ if(path==='/stock-control/items')return {items:[item]};
+ if(path==='/stock-control/counts'){
+  if(method==='GET')return {counts:state.count?[state.count]:[]};
+  state.count??={id:'count',status:'draft',shift_id:'shift',schedule_id:null};return {id:'count',count:state.count};
+ }
+ if(path==='/stock-control/counts/count')return {count:state.count,entries:state.entries};
+ if(path==='/stock-control/counts/count/entries'){
+  state.entries=body.entries.map(e=>({item_id:e.itemId,quantity_base:e.quantity}));return {ok:true};
+ }
+ if(path==='/stock-control/counts/count/submit'){
+  if(!state.entries.length||state.entries.some(e=>e.quantity_base===null))failure('Count every item.');
+  state.count.status='submitted';return {count:state.count};
+ }
+ if(path==='/stock-control/requisitions'){
+  if(method==='GET')return {requisitions:state.requisition?[state.requisition]:[]};
+  state.requisition??={id:'requisition',shift_id:'shift',count_id:body.countId,status:'draft'};return {id:state.requisition.id};
+ }
+ if(path==='/stock-control/requisitions/requisition')return {requisition:state.requisition,items:state.requestItems};
+ if(path==='/stock-control/requisitions/requisition/items'){
+  state.requestItems=body.items.map(e=>({item_id:e.itemId,requested_base:e.quantity}));return {ok:true};
+ }
+ if(path==='/stock-control/requisitions/requisition/submit'){
+  state.requisition.status='submitted';return {requisition:state.requisition};
+ }
+ throw Error('Unexpected request '+method+' '+path);
+}
+createRoot(document.getElementById('root')).render(<ClosingWorkspace request={request} shift={{id:'shift',opened_at:'2026-11-20T10:00:00Z'}} user={{tenantId:'tenant',device:{locationId:'location'},permissions:['operations.closing.reconcile','operations.stock.count','operations.stock.requisition']}}/>);

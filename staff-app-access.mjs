@@ -59,7 +59,7 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
     return dashboard && has('operations.expenses');
   }
   if (path.startsWith('/recipe-costing')) return dashboard && has('operations.recipes') && has('operations.costing');
-  if (path.startsWith('/shift-reconciliation')) return (pos || dashboard) && has('operations.closing.reconcile') &&
+  if (path.startsWith('/shift-reconciliation')) return (pos || dashboard) && (has('operations.closing.reconcile') || read && has('operations.closing.financial')) &&
     (!path.endsWith('/report') || has('operations.closing.financial'));
   if (path.startsWith('/stock-control')) {
     const parts = path.slice('/stock-control/'.length).split('/');
@@ -68,15 +68,21 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
       (has('operations.stock.purchase') || has('operations.stock.receive'));
     const permission = resource === 'settings' ? read ? 'operations.stock.count' : 'operations.stock.configure'
       : resource === 'items' || resource === 'schedules' ? read ? 'operations.stock.count' : 'operations.stock.configure'
-      : resource === 'counts' ? 'operations.stock.count'
+      : resource === 'counts' ? read ? null : 'operations.stock.count'
       : resource === 'variance' ? 'operations.stock.variance'
       : resource === 'movements' ? read ? 'operations.stock.history'
         : body?.kind === 'receipt' ? 'operations.stock.receive' : body?.kind === 'waste' ? 'operations.stock.waste' : 'operations.stock.adjust'
       : resource === 'requisitions' ? action === 'approve' || action === 'reject' ? 'operations.stock.approve' : read ? null : 'operations.stock.requisition'
       : resource === 'purchases' ? action === 'receive' ? 'operations.stock.receive' : 'operations.stock.purchase'
       : null;
-    return (resource === 'items' && read
-      ? has('operations.stock.count') || has('operations.stock.requisition') || has('operations.stock.configure')
+    return (resource === 'settings' && read
+      ? has('operations.stock.count') || has('operations.stock.configure')
+      : resource === 'schedules' && read
+      ? has('operations.stock.count') || has('operations.stock.configure')
+      : resource === 'counts' && read
+      ? ['operations.stock.count','operations.stock.history','operations.stock.variance'].some(has)
+      : resource === 'items' && read
+      ? ['operations.stock.count','operations.stock.requisition','operations.stock.configure','operations.stock.history','operations.stock.variance'].some(has)
       : resource === 'requisitions' && read
       ? has('operations.stock.requisition') || has('operations.stock.approve')
       : Boolean(permission) && has(permission)) && (pos || dashboard);

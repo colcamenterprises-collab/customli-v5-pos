@@ -22,6 +22,10 @@ test('item conversions and PAR rounding preserve dimensions',()=>{const beef={ba
  assert.equal(toBase(beef,0.5,'kg'),500);assert.throws(()=>toBase(beef,4,'ml'));assert.equal(purchasePackBase(beef),1000);assert.equal(purchasePackBase(roll),12);
  assert.deepEqual(suggestPurchase({onHand:42,target:150,packBase:12}),{requiredBase:108,packs:9,quantityBase:108});
  assert.deepEqual(variance({opening:10000,received:5000,consumed:10800,wastage:200,closing:3200,tolerance:500}),{status:'outside_tolerance',expected:4000,difference:-800});
+ const cans={base_unit:'each',pack_quantity:24,pack_unit:'each',pack_type:'Carton',each_quantity:1,each_unit:'each'};
+ assert.equal(toBase(cans,2,'carton'),48);
+ assert.throws(()=>toBase({...cans,pack_type:'Case'},1,'carton'));
+ assert.throws(()=>toBase(beef,2,'carton'));
 });
 test('count drafts distinguish blank from zero and enforce tenant and location',()=>{const db=fixture();assert.equal(call(db,'/settings','PUT',{model:'smart',countsEnabled:true,requisitionsEnabled:true,receivingRequired:true,timezone:'Asia/Bangkok'}).status,200);
  assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5}).status,200);

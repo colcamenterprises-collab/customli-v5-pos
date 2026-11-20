@@ -27,7 +27,8 @@ export function handleShiftReconciliation(url,method,res,db,user,body){
  const path=url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');if(!path.startsWith('/shift-reconciliation'))return false;
  try{
   const s=scope(user),parts=path.slice('/shift-reconciliation'.length).split('/').filter(Boolean),shiftId=parts[0];
-  if(!permitted(user,'operations.closing.reconcile'))fail(403,'Closing reconciliation is not assigned to your account.');
+  if(!permitted(user,'operations.closing.reconcile')&&!(method==='GET'&&permitted(user,'operations.closing.financial')))fail(403,'Closing reconciliation is not assigned to your account.');
+  if(method==='GET'&&!shiftId){if(!permitted(user,'operations.closing.financial'))fail(403,'Financial reconciliation access is required.');return send(res,200,{reconciliations:db.prepare('SELECT id,shift_id,status,actor_id,created_at,updated_at,submitted_at FROM shift_reconciliations WHERE tenant_id=? AND location_id=? ORDER BY created_at DESC LIMIT 200').all(s.tenant,s.location)})}
   const shift=db.prepare('SELECT id FROM shifts WHERE id=?').get(shiftId);if(!shift)fail(404,'Shift not found.');
   const existing=()=>db.prepare('SELECT * FROM shift_reconciliations WHERE tenant_id=? AND location_id=? AND shift_id=?').get(s.tenant,s.location,shiftId);
   const available=()=>({channels:db.prepare('SELECT id,name FROM sales_channels WHERE active=1 ORDER BY sort_order,name').all(),methods:db.prepare('SELECT DISTINCT name FROM (SELECT payment_method AS name FROM orders WHERE shift_id=? UNION SELECT r.payment_method AS name FROM refunds r JOIN orders o ON o.id=r.order_id WHERE o.shift_id=?) ORDER BY name').all(shiftId,shiftId)});
