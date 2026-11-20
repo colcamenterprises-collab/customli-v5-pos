@@ -130,6 +130,7 @@ export function handleFoodModel(url,method,res,db,user,body){
   ids.add(ingredient.id);resolved.push([ingredient.id,quantity(line.quantity,'ingredient quantity')]);
  }
  const id=method==='PATCH'?p[1]:randomUUID();if(method==='PATCH'&&!lookup(db,id))fail(404,'Recipe not found.');
+ if(method==='PATCH'&&db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='manual_recipe_cost_lines'").get()&&db.prepare('SELECT 1 FROM manual_recipe_cost_lines WHERE recipe_id=? LIMIT 1').get(id))fail(409,'Edit this trial recipe in Recipes & Costing to preserve its manual ingredients.');
  const conflicting=product?db.prepare('SELECT id FROM food_recipes WHERE product_id=? AND id<>?').get(product,id):null;
  if(conflicting)fail(409,'That menu item is already linked to another recipe.');
  const hasLinks=!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='recipe_menu_links'").get();
