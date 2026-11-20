@@ -27,6 +27,15 @@ test('item conversions and PAR rounding preserve dimensions',()=>{const beef={ba
  assert.throws(()=>toBase({...cans,pack_type:'Case'},1,'carton'));
  assert.throws(()=>toBase(beef,2,'carton'));
 });
+test('manual requisition retries use a scoped request key without duplicate rows',()=>{const db=fixture(),body={shiftId:'shift',idempotencyKey:'offline-request-1'};
+ const first=call(db,'/requisitions','POST',body);assert.equal(first.status,201);
+ assert.equal(call(db,'/requisitions','POST',body).body.id,first.body.id);
+ assert.equal(call(db,'/requisitions','POST',{...body,shiftId:'other'}).status,404);
+ db.exec("INSERT INTO shifts VALUES('other','2026-11-20T01:00:00Z',NULL,0)");
+ assert.equal(call(db,'/requisitions','POST',{...body,shiftId:'other'}).status,409);
+ assert.equal(call(db,'/requisitions','POST',body,{id:'other',role:'Owner',tenantId:'b',device:{locationId:'one'}}).status,201);
+ migrateStockControl(db);assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
+});
 test('count drafts distinguish blank from zero and enforce tenant and location',()=>{const db=fixture();assert.equal(call(db,'/settings','PUT',{model:'smart',countsEnabled:true,requisitionsEnabled:true,receivingRequired:true,timezone:'Asia/Bangkok'}).status,200);
  assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5}).status,200);
  const staff={id:'staff',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.count'])};

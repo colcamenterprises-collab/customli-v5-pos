@@ -39,6 +39,8 @@ test('tenant and location isolate reconciliation, and submitted values are immut
  assert.equal(call(db,owner,'').body.reconciliations.length,1);
  assert.equal(call(db,staff,'').status,403);
  const otherTenant={...owner,tenantId:'other'},otherLocation={...owner,device:{locationId:'other'}};
+ assert.deepEqual(call(db,otherTenant,'').body.reconciliations,[]);
+ assert.deepEqual(call(db,otherLocation,'').body.reconciliations,[]);
  assert.equal(call(db,otherTenant,'/night/report').status,404);
  assert.equal(call(db,otherLocation,'/night/report').status,404);
  assert.equal(call(db,staff,'/night/submit','POST',{...payload,cashMinor:1}).status,200);
