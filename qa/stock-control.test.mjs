@@ -61,6 +61,9 @@ test('count drafts distinguish blank from zero and enforce tenant and location',
  assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:0}]}).status,200);
  assert.equal(call(db,'/counts/'+id+'/submit','POST').status,200);
  assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:4}]}).status,409);
+ assert.deepEqual(call(db,'/counts','GET',{},staff).body.counts,[]);
+ assert.equal(call(db,'/counts/'+id,'GET',{},staff).status,403);
+ assert.equal(call(db,'/counts/'+id,'GET',{}, {...staff,permissions:new Set(['operations.stock.history'])}).status,200);
  assert.equal(call(db,'/counts/'+id,'GET',{}, {id:'other',role:'Owner',tenantId:'b',device:{locationId:'one'}}).status,404);
  assert.equal(call(db,'/counts/'+id,'GET',{}, {id:'other',role:'Owner',tenantId:'a',device:{locationId:'two'}}).status,404);
  assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
