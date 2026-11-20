@@ -59,6 +59,20 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
     return dashboard && has('operations.expenses');
   }
   if (path.startsWith('/recipe-costing')) return dashboard && has('operations.recipes') && has('operations.costing');
+  if (path.startsWith('/stock-control')) {
+    const parts = path.slice('/stock-control/'.length).split('/');
+    const resource = parts[0], action = parts[2];
+    const permission = resource === 'settings' ? read ? 'operations.stock.count' : 'operations.stock.configure'
+      : resource === 'items' || resource === 'schedules' ? read ? 'operations.stock.count' : 'operations.stock.configure'
+      : resource === 'counts' ? 'operations.stock.count'
+      : resource === 'variance' ? 'operations.stock.variance'
+      : resource === 'movements' ? read ? 'operations.stock.history'
+        : body?.kind === 'receipt' ? 'operations.stock.receive' : body?.kind === 'waste' ? 'operations.stock.waste' : 'operations.stock.adjust'
+      : resource === 'requisitions' ? 'operations.stock.requisition'
+      : resource === 'purchases' ? action === 'receive' ? 'operations.stock.receive' : 'operations.stock.purchase'
+      : null;
+    return Boolean(permission) && has(permission) && (pos || dashboard);
+  }
   if (path.startsWith('/purchasing')) return dashboard && has(path.startsWith('/purchasing/suppliers') ? 'operations.suppliers' : 'operations.purchasing');
   if (path.startsWith('/food-model')) {
     const permission = ['ingredients', 'suppliers', 'purchasing', 'inventory'].find(key => path.startsWith('/food-model/' + key));
