@@ -75,10 +75,12 @@ test('partial receiving adds usable stock once and updates current purchase cost
  const purchased=call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:180000}]},buyer);
  assert.equal(purchased.status,201);
  const duplicate=call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:180000}]},buyer);assert.equal(duplicate.status,200);
+ assert.equal(call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:9,unit:'kg',totalPriceMinor:180000}]},buyer).status,409);
  const line=call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},buyer).body.lines[0];
  const part={lineId:line.id,usableQuantity:2,rejectedQuantity:.5,unit:'kg',idempotencyKey:'delivery-one',shiftId:'shift'};
  assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',part,buyer).status,201);
  assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',part,buyer).status,200);
+ assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',{...part,usableQuantity:1},buyer).status,409);
  assert.equal(db.prepare("SELECT SUM(quantity_base) amount FROM stock_movements WHERE kind='receipt'").get().amount,2000);
  assert.equal(db.prepare("SELECT pack_cost_minor FROM food_ingredients WHERE id='beef'").get().pack_cost_minor,36000);
  assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',{...part,idempotencyKey:'delivery-two',usableQuantity:2.5,rejectedQuantity:0},buyer).status,201);
