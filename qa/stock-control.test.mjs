@@ -25,7 +25,11 @@ test('item conversions and PAR rounding preserve dimensions',()=>{const beef={ba
 });
 test('count drafts distinguish blank from zero and enforce tenant and location',()=>{const db=fixture();assert.equal(call(db,'/settings','PUT',{model:'smart',countsEnabled:true,requisitionsEnabled:true,receivingRequired:true,timezone:'Asia/Bangkok'}).status,200);
  assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5}).status,200);
+ const staff={id:'staff',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.count'])};
+ const visible=call(db,'/items','GET',{},staff).body.items.find(i=>i.id==='beef');
+ assert.equal(visible.par_base,undefined);assert.equal(visible.tolerance_base,undefined);
  const id=call(db,'/counts','POST',{shiftId:'shift'}).body.id;assert.ok(id);
+ assert.equal(call(db,'/counts','POST',{shiftId:'shift'}).body.id,id);
  assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:null}]}).status,200);
  assert.equal(call(db,'/counts/'+id+'/submit','POST').status,409);
  assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:0}]}).status,200);

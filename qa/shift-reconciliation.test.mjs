@@ -48,4 +48,9 @@ test('API gateway denies blind staff access to expected figures',()=>{
  assert.equal(request('/shift-reconciliation/night'),true);
  assert.equal(request('/shift-reconciliation/night/report'),false);
  assert.equal(request('/stock-control/variance/anything'),false);
+ const countOnly=new Set(['applications.pos','operations.stock.count']);
+ assert.equal(permitsStaffRequest({permissions:countOnly,mode:'POS',path:'/stock-control/items',method:'GET',query:new URLSearchParams()}),true);
+ assert.equal(permitsStaffRequest({permissions:countOnly,mode:'POS',path:'/stock-control/variance/anything',method:'GET',query:new URLSearchParams()}),false);
+ const approver=new Set(['applications.dashboard','operations.stock.approve']);
+ assert.equal(permitsStaffRequest({permissions:approver,mode:'DASHBOARD',path:'/stock-control/requisitions/example/approve',method:'POST',query:new URLSearchParams()}),true);
 });

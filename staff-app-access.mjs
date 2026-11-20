@@ -72,10 +72,14 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
       : resource === 'variance' ? 'operations.stock.variance'
       : resource === 'movements' ? read ? 'operations.stock.history'
         : body?.kind === 'receipt' ? 'operations.stock.receive' : body?.kind === 'waste' ? 'operations.stock.waste' : 'operations.stock.adjust'
-      : resource === 'requisitions' ? 'operations.stock.requisition'
+      : resource === 'requisitions' ? action === 'approve' || action === 'reject' ? 'operations.stock.approve' : read ? null : 'operations.stock.requisition'
       : resource === 'purchases' ? action === 'receive' ? 'operations.stock.receive' : 'operations.stock.purchase'
       : null;
-    return Boolean(permission) && has(permission) && (pos || dashboard);
+    return (resource === 'items' && read
+      ? has('operations.stock.count') || has('operations.stock.requisition') || has('operations.stock.configure')
+      : resource === 'requisitions' && read
+      ? has('operations.stock.requisition') || has('operations.stock.approve')
+      : Boolean(permission) && has(permission)) && (pos || dashboard);
   }
   if (path.startsWith('/purchasing')) return dashboard && has(path.startsWith('/purchasing/suppliers') ? 'operations.suppliers' : 'operations.purchasing');
   if (path.startsWith('/food-model')) {
