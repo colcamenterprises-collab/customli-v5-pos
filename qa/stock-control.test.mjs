@@ -95,6 +95,11 @@ test('physical counts calculate interval variance and produce pack-rounded requi
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T05:00:00Z' WHERE id=?").run(second);
  const result=stockVariance(db,{tenant:'a',location:'one'},second,'beef');
  assert.equal(result.expected,4000);assert.equal(result.difference,-800);assert.equal(result.status,'outside_tolerance');
+ const exceptions=call(db,'/variance?itemId=beef&status=outside_tolerance').body.variance;
+ assert.equal(exceptions.length,1);assert.equal(exceptions[0].difference,-800);
+ assert.equal(call(db,'/variance?itemId=beef','GET',{}, {...owner,tenantId:'other'}).body.variance.length,0);
+ assert.equal(call(db,'/variance/'+second+'/beef/review','POST',{status:'action_required',reason:'Investigate patty portions'},owner).status,200);
+ assert.equal(call(db,'/variance/'+second).body.variance[0].review.reason,'Investigate patty portions');
  assert.equal(call(db,'/purchases','POST',{idempotencyKey:'inbound-two',lines:[{itemId:'beef',quantity:2,unit:'kg',totalPriceMinor:60000}]},owner).status,201);
  const req=call(db,'/requisitions','POST',{shiftId:'next',countId:second});assert.equal(req.status,201);
  const entries=call(db,'/requisitions/'+req.body.id).body.items;
