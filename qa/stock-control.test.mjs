@@ -191,3 +191,14 @@ test('controlled purchasing requires approval and records rejection reason',()=>
  assert.equal(call(db,'/requisitions/'+second+'/reject','POST',{},actor).status,400);
  assert.equal(call(db,'/requisitions/'+second+'/reject','POST',{reason:'Supplier unavailable'},actor).status,200);
 });
+
+test('disabled stock stages reject writes while preserving historical reads and independent location configuration',()=>{
+ const db=fixture(),config={model:'disabled',countsEnabled:false,requisitionsEnabled:false,timezone:'Asia/Bangkok'};
+ assert.equal(call(db,'/settings','PUT',config).status,200);
+ assert.equal(call(db,'/counts','POST',{shiftId:'shift'}).status,409);
+ assert.equal(call(db,'/requisitions','POST',{shiftId:'shift'}).status,409);
+ assert.equal(call(db,'/movements','POST',{kind:'waste',itemId:'beef',quantity:1,unit:'g',reason:'Expired',idempotencyKey:'disabled-1'}).status,409);
+ assert.equal(call(db,'/counts').status,200);
+ assert.equal(call(db,'/requisitions').status,200);
+ assert.equal(call(db,'/counts','POST',{shiftId:'shift'},{id:'other',role:'Owner',tenantId:'a',device:{locationId:'two'}}).status,201);
+});

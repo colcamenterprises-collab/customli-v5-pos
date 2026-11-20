@@ -61,3 +61,11 @@ test('API gateway denies blind staff access to expected figures',()=>{
  const approver=new Set(['applications.dashboard','operations.stock.approve']);
  assert.equal(permitsStaffRequest({permissions:approver,mode:'DASHBOARD',path:'/stock-control/requisitions/example/approve',method:'POST',query:new URLSearchParams()}),true);
 });
+
+test('location configuration disables blind sales submissions at the API',()=>{
+ const db=fixture();db.exec("CREATE TABLE stock_settings(tenant_id TEXT,location_id TEXT,sales_enabled INTEGER); INSERT INTO stock_settings VALUES('t','l',0)");
+ assert.equal(call(db,staff,'/night','PUT',payload).status,409);
+ assert.equal(call(db,staff,'/night','GET').status,200);
+ db.exec("INSERT INTO stock_settings VALUES('t','two',1)");
+ assert.equal(call(db,{...staff,device:{locationId:'two'}},'/night','PUT',payload).status,200);
+});

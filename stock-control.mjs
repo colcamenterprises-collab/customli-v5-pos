@@ -70,6 +70,10 @@ export function handleStockControl(url,method,res,db,user,body){
  const path=url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');if(!path.startsWith('/stock-control'))return false;
  try{
   const s=scopeFor(user),p=path.slice('/stock-control'.length).split('/').filter(Boolean),b=body||{};
+  const config=db.prepare('SELECT model,counts_enabled,requisitions_enabled FROM stock_settings WHERE tenant_id=? AND location_id=?').get(s.tenant,s.location);
+  if(method!=='GET'&&p[0]==='counts'&&config&&(config.model==='disabled'||!config.counts_enabled))fail(409,'Stock counts are disabled for this location.');
+  if(method!=='GET'&&p[0]==='requisitions'&&config&&(config.model==='disabled'||!config.requisitions_enabled))fail(409,'Requisitions are disabled for this location.');
+  if(method!=='GET'&&p[0]==='movements'&&config?.model==='disabled')fail(409,'Stock movements are disabled for this location.');
   const own=(table,id)=>{const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND tenant_id=? AND location_id=?`).get(id,s.tenant,s.location);if(!row)fail(404,'Record not found.');return row};
   if(p[0]==='shift'&&method==='GET'&&p[1]){if(!process.env.PLATFORM_TENANT_ID||!process.env.PLATFORM_LOCATION_ID)fail(503,'Restaurant shift scope is unavailable.');requirePermission(user,'operations.closing.checklist');const record=shift(db,p[1]);const settings=db.prepare('SELECT model,sales_enabled,cleaning_enabled,counts_enabled,requisitions_enabled FROM stock_settings WHERE tenant_id=? AND location_id=?').get(s.tenant,s.location)||{model:'disabled',sales_enabled:0,cleaning_enabled:0,counts_enabled:0,requisitions_enabled:0};
    const sales=db.prepare("SELECT status,submitted_at,actor_id FROM shift_reconciliations WHERE tenant_id=? AND location_id=? AND shift_id=?").get(s.tenant,s.location,record.id);

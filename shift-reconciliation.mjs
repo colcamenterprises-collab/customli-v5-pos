@@ -27,6 +27,7 @@ export function handleShiftReconciliation(url,method,res,db,user,body){
  const path=url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');if(!path.startsWith('/shift-reconciliation'))return false;
  try{
   const s=scope(user),parts=path.slice('/shift-reconciliation'.length).split('/').filter(Boolean),shiftId=parts[0];
+  if(['PUT','POST'].includes(method)&&db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_settings'").get()){const settings=db.prepare('SELECT sales_enabled FROM stock_settings WHERE tenant_id=? AND location_id=?').get(s.tenant,s.location);if(settings&&!settings.sales_enabled)fail(409,'Sales reconciliation is disabled for this location.')}
   if(!permitted(user,'operations.closing.reconcile')&&!(method==='GET'&&permitted(user,'operations.closing.financial')))fail(403,'Closing reconciliation is not assigned to your account.');
   if(method==='GET'&&!shiftId){if(!permitted(user,'operations.closing.financial'))fail(403,'Financial reconciliation access is required.');return send(res,200,{reconciliations:db.prepare('SELECT id,shift_id,status,actor_id,created_at,updated_at,submitted_at FROM shift_reconciliations WHERE tenant_id=? AND location_id=? ORDER BY created_at DESC LIMIT 200').all(s.tenant,s.location)})}
   const shift=db.prepare('SELECT id FROM shifts WHERE id=?').get(shiftId);if(!shift)fail(404,'Shift not found.');
