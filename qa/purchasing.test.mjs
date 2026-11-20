@@ -115,3 +115,20 @@ test('supplier price updates require exact SKU and retain recipe relationships',
  assert.equal(food(db,'/recipes/'+recipe.id).data.recipe.cost_per_serve_minor,1100);
  assert.equal(call(db,'/items/'+item.id+'/history').data.history[0].source,'supplier price update');
 });
+
+test('SBB source measurements and historical unit cost survive export and reimport',()=>{
+ const db=fixture(),record={name:'Coke',supplier:'Makro',supplierSku:'177800',packQuantity:6,packUnit:'each',unitsPerPack:6,eachQuantity:1,eachUnit:'each',purchaseCost:81,externalId:'1',sourceBaseUnit:'6 Cans',sourceUnitCost:'13.5'};
+ const preview=call(db,'/import','POST',{records:[record]}).data;
+ assert.equal(call(db,'/import','POST',{records:[record],confirm:true,expected:preview.proposals.map(({action,id,updatedAt})=>({action,id,updatedAt}))}).status,200);
+ const item=call(db,'/items').data.items[0];
+ assert.equal(item.source_base_unit,'6 Cans');
+ assert.equal(item.source_unit_cost,'13.5');
+ assert.equal(item.pack_quantity,6);
+ const csv=call(db,'/export').data;
+ assert.match(csv,/"source_base_unit","source_unit_cost"/);
+ assert.match(csv,/"6 Cans","13.5"/);
+ assert.equal(call(db,'/items/'+item.id,'PATCH',{purchaseCost:84}).data.item.source_base_unit,'6 Cans');
+ const other={...record,name:'Paper',brand:'',supplierSku:'',purchaseCost:10,externalId:'1'};
+ assert.equal(call(db,'/import','POST',{records:[other]}).status,409);
+ assert.equal(call(db,'/items').data.items.length,1);
+});
