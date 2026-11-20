@@ -35,7 +35,17 @@ try{
  await page.getByText('Grill cleaned').waitFor();
  await page.getByLabel('Result').selectOption('compliant');
  await page.getByLabel('Reading').fill('4.2');
+ const photo=await page.screenshot();
+ await page.getByLabel('Photo').setInputFiles({name:'grill.png',mimeType:'image/png',buffer:photo});
+ await page.getByText('Photo saved on device').waitFor();
+ assert.equal(await page.evaluate(()=>localStorage.getItem(Object.keys(localStorage).find(key=>key.startsWith('v5-cleaning:'))).includes('data:image')),false);
+ await page.evaluate(()=>{window.closingFixture.offline=true});
  await page.getByRole('button',{name:'Submit cleaning checklist'}).click();
+ await page.getByText('Waiting to sync').waitFor();
+ await page.reload();
+ await page.evaluate(()=>{window.closingFixture.state.checklist={id:'run',template_id:'template',shift_id:'shift'};window.closingFixture.offline=false});
+ await page.getByRole('button',{name:'Cleaning',exact:true}).click();
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await page.getByRole('button',{name:'Checklist submitted'}).waitFor();
  assert.equal(await page.evaluate(()=>window.closingFixture.state.checklist.shift_id),'shift');
  await page.getByRole('button',{name:'Stock count'}).click();
