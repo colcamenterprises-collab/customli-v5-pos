@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 
-const units={g:['g',1],kg:['g',1000],ml:['ml',1],L:['ml',1000],each:['each',1]};
+const units={mg:['g',0.001],g:['g',1],kg:['g',1000],ml:['ml',1],L:['ml',1000],each:['each',1]};
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
 const string=(v,max=5000)=>String(v??'').trim().slice(0,max);

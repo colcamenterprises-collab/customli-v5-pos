@@ -49,3 +49,13 @@ test('legacy recipe relinking synchronizes current checkout associations',()=>{
  assert.equal(request('/recipes/'+recipeId,'PATCH',{name:'Bun recipe',yieldQuantity:1,productId:null,components:[{ingredientId:'bun',quantity:1}]}).status,200);
  assert.equal(d.prepare('SELECT count(*) AS n FROM recipe_menu_links WHERE recipe_id=?').get(recipeId).n,0);
 });
+
+test('bulk bacon purchase costs a recipe portion measured in milligrams without changing its quantity',()=>{
+ const d=db();d.exec("INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at) VALUES('bacon','Bacon','g',1,'kg',30000,'2026-11-20')");
+ const input={name:'Bacon burger',yieldQuantity:1,lines:[{itemId:'bacon',lineType:'ingredient',quantity:30000,unitUsed:'mg'}]};
+ const created=call(d,'','POST',input);assert.equal(created.status,201);assert.equal(created.data.recipe.cost_per_serve_minor,900);
+ const id=created.data.recipe.id;assert.equal(created.data.recipe.lines[0].quantity_base,30);
+ d.exec("UPDATE food_ingredients SET pack_quantity=2 WHERE id='bacon'");
+ const changed=call(d,'/'+id).data.recipe;assert.equal(changed.cost_per_serve_minor,450);assert.equal(changed.lines[0].quantity,30000);assert.equal(changed.lines[0].unit_used,'mg');
+ assert.equal(d.prepare('SELECT quantity FROM food_recipe_components WHERE recipe_id=?').get(id).quantity,30);
+});
