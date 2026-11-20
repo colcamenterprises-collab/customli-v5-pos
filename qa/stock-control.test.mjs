@@ -5,6 +5,7 @@ import {migrateFoodModel} from '../food-model.mjs';
 import {migratePurchasing} from '../purchasing.mjs';
 import {migrateRecipeCosting} from '../recipe-costing.mjs';
 import {migrateStockControl,handleStockControl,stockVariance} from '../stock-control.mjs';
+import {migrateShiftReconciliation} from '../shift-reconciliation.mjs';
 import {toBase,purchasePackBase,variance,suggestPurchase,consumptionFromSnapshots} from '../stock-math.mjs';
 
 function fixture(){const db=new DatabaseSync(':memory:');db.exec(`PRAGMA foreign_keys=ON;
@@ -14,7 +15,7 @@ function fixture(){const db=new DatabaseSync(':memory:');db.exec(`PRAGMA foreign
  CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id));
  CREATE TABLE order_item_cost_snapshots(order_item_id TEXT PRIMARY KEY,quantity INTEGER NOT NULL,complete INTEGER NOT NULL,reason TEXT NOT NULL,components_json TEXT NOT NULL);
  INSERT INTO shifts VALUES('shift','2026-11-20T00:00:00Z',NULL,0);`);
- migrateFoodModel(db);migratePurchasing(db);migrateRecipeCosting(db);migrateStockControl(db);
+ migrateFoodModel(db);migratePurchasing(db);migrateRecipeCosting(db);migrateStockControl(db);migrateShiftReconciliation(db);
  db.exec("INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at,each_quantity,each_unit) VALUES('beef','Beef','g',1,'kg',30000,'2026-11-20',1,'each'),('roll','Roll','each',12,'each',12000,'2026-11-20',1,'each')");return db}
 function call(db,path,method='GET',body={},user={id:'owner',role:'Owner',tenantId:'a',device:{locationId:'one'}}){let result;const res={writeHead(status){result={status}},end(s){result.body=JSON.parse(s)}};handleStockControl(new URL('https://example.test/v5/api/stock-control'+path),method,res,db,user,body);return result}
 
@@ -77,6 +78,10 @@ test('checklist shift verification rejects cross-tenant and missing scope',()=>{
   assert.equal(call(db,'/shift/shift','GET',{},staff).status,503);
   process.env.PLATFORM_TENANT_ID='a';process.env.PLATFORM_LOCATION_ID='one';
   assert.equal(call(db,'/shift/shift','GET',{},staff).body.shift.id,'shift');
+  assert.equal(call(db,'/shift/shift','GET',{},staff).body.stages.sales.complete,false);
+  call(db,'/settings','PUT',{model:'smart',salesEnabled:true,cleaningEnabled:true,countsEnabled:true,requisitionsEnabled:true,timezone:'Asia/Bangkok'});
+  db.prepare('INSERT INTO shift_reconciliations VALUES(?,?,?,?,?,?,?,?,?,?)').run('sale','a','one','shift','submitted','cashier','{}','2026-11-20T00:00:00Z','2026-11-20T00:00:00Z','2026-11-20T00:00:00Z');
+  assert.equal(call(db,'/shift/shift','GET',{},staff).body.stages.sales.complete,true);
   assert.equal(call(db,'/shift/shift','GET',{}, {...staff,permissions:new Set()}).status,403);
   assert.equal(call(db,'/shift/shift','GET',{}, {...staff,tenantId:'other'}).status,403);
   assert.equal(call(db,'/shift/shift','GET',{}, {...staff,device:{locationId:'two'}}).status,403);

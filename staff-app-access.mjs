@@ -20,6 +20,7 @@ export function permitsStaffRequest({ permissions, mode, path, method, query, bo
   }
   const pos = has('applications.pos');
   const dashboard = mode !== 'POS' && has('applications.dashboard');
+  if (read && path.startsWith('/stock-control/shift/') && has('operations.closing.checklist')) return true;
   if (!pos && !dashboard) return false;
   if (path === '/me' || path === '/logout') return true;
 

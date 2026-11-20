@@ -42,6 +42,7 @@ try{
  await page.getByText('0 of 1 counted').waitFor();
  await page.evaluate(()=>{window.closingFixture.offline=true});
  await page.reload();
+ await page.evaluate(()=>{window.closingFixture.state.reconciliation={status:'submitted'};window.closingFixture.state.checklist={id:'run',completed_at:new Date().toISOString()}});
  await page.getByRole('button',{name:'Stock count'}).click();
  await page.getByText('Burger rolls').waitFor();
  await page.getByLabel('Count schedule').selectOption('daily');
@@ -60,6 +61,9 @@ try{
  await page.getByRole('button',{name:'Submit requisition'}).click();
  await page.getByRole('button',{name:'Requisition submitted',exact:true}).waitFor({timeout:12000});
  assert.equal(await page.evaluate(()=>window.closingFixture.state.requestItems[0].requested_base),12);
+ await page.getByRole('button',{name:'Finalise closing'}).click();
+ await page.getByText(/Ready for next shift/).waitFor();
+ assert.equal(await page.evaluate(()=>window.closingFixture.state.finalised.accountId),'staff');
  for(const width of [390,820,1440]){
   await page.setViewportSize({width,height:900});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow at '+width);

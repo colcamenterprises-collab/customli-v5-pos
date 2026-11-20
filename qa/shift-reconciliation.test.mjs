@@ -52,6 +52,9 @@ test('API gateway denies blind staff access to expected figures',()=>{
  assert.equal(request('/shift-reconciliation/night'),true);
  assert.equal(request('/shift-reconciliation/night/report'),false);
  assert.equal(request('/stock-control/variance/anything'),false);
+ const kitchen=new Set(['applications.kds','operations.closing.checklist']);
+ assert.equal(permitsStaffRequest({permissions:kitchen,mode:'KDS',path:'/stock-control/shift/s1',method:'GET',query:new URLSearchParams()}),true);
+ assert.equal(permitsStaffRequest({permissions:kitchen,mode:'KDS',path:'/stock-control/variance/s1',method:'GET',query:new URLSearchParams()}),false);
  const countOnly=new Set(['applications.pos','operations.stock.count']);
  assert.equal(permitsStaffRequest({permissions:countOnly,mode:'POS',path:'/stock-control/items',method:'GET',query:new URLSearchParams()}),true);
  assert.equal(permitsStaffRequest({permissions:countOnly,mode:'POS',path:'/stock-control/variance/anything',method:'GET',query:new URLSearchParams()}),false);
