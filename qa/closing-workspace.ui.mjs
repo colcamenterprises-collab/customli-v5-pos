@@ -35,6 +35,7 @@ try{
  await page.reload();
  await page.getByRole('button',{name:'Stock count'}).click();
  await page.getByText('Burger rolls').waitFor();
+ await page.getByLabel('Count schedule').selectOption('daily');
  await page.evaluate(()=>{window.closingFixture.offline=false});
  await page.getByRole('button',{name:'Submit stock count'}).click();
  await page.getByText('Count every selected item. Enter 0 when there is none.').waitFor();
@@ -42,6 +43,7 @@ try{
  await page.getByRole('button',{name:'Submit stock count'}).click();
  await page.getByRole('button',{name:'Count submitted'}).waitFor({timeout:12000});
  assert.equal(await page.evaluate(()=>window.closingFixture.state.entries[0].quantity_base),0);
+ assert.equal(await page.evaluate(()=>window.closingFixture.state.count.schedule_id),'daily');
  await page.getByRole('button',{name:'Requisition',exact:true}).click();
  await page.getByRole('button',{name:'Start requisition'}).click();
  await page.getByRole('searchbox',{name:'Find an item'}).waitFor();

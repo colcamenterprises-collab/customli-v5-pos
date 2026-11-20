@@ -36,6 +36,11 @@ test('manual requisition retries use a scoped request key without duplicate rows
  assert.equal(call(db,'/requisitions','POST',body,{id:'other',role:'Owner',tenantId:'b',device:{locationId:'one'}}).status,201);
  migrateStockControl(db);assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
 });
+test('stock schedule rows are reusable and scoped by tenant and location',()=>{const db=fixture();
+ const created=call(db,'/schedules','POST',{name:'Daily critical',frequency:'daily',itemIds:['roll','beef']});assert.equal(created.status,201);
+ assert.deepEqual(call(db,'/schedules/'+created.body.id).body.items.map(row=>row.item_id),['roll','beef']);
+ assert.equal(call(db,'/schedules/'+created.body.id,'GET',{}, {id:'other',role:'Owner',tenantId:'b',device:{locationId:'one'}}).status,404);
+});
 test('count drafts distinguish blank from zero and enforce tenant and location',()=>{const db=fixture();assert.equal(call(db,'/settings','PUT',{model:'smart',countsEnabled:true,requisitionsEnabled:true,receivingRequired:true,timezone:'Asia/Bangkok'}).status,200);
  assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5}).status,200);
  const staff={id:'staff',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.count'])};
@@ -82,9 +87,10 @@ test('physical counts calculate interval variance and produce pack-rounded requi
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T05:00:00Z' WHERE id=?").run(second);
  const result=stockVariance(db,{tenant:'a',location:'one'},second,'beef');
  assert.equal(result.expected,4000);assert.equal(result.difference,-800);assert.equal(result.status,'outside_tolerance');
+ assert.equal(call(db,'/purchases','POST',{idempotencyKey:'inbound-two',lines:[{itemId:'beef',quantity:2,unit:'kg',totalPriceMinor:60000}]},owner).status,201);
  const req=call(db,'/requisitions','POST',{shiftId:'next',countId:second});assert.equal(req.status,201);
  const entries=call(db,'/requisitions/'+req.body.id).body.items;
- assert.equal(entries[0].requested_base,12000);
+ assert.equal(entries[0].requested_base,10000);
  assert.equal(call(db,'/requisitions/'+req.body.id+'/submit','POST').status,200);
  assert.equal(call(db,'/requisitions/'+req.body.id+'/items','PUT',{items:[]}).status,409);
 });

@@ -18,9 +18,11 @@ async function request(path,method='GET',body){
   state.reconciliation={status:'submitted',payload:body};return {reconciliation:state.reconciliation};
  }
  if(path==='/stock-control/items')return {items:[item]};
+ if(path==='/stock-control/schedules')return {schedules:[{id:'daily',name:'Daily critical',frequency:'daily',active:1}]};
+ if(path==='/stock-control/schedules/daily')return {schedule:{id:'daily'},items:[{item_id:'roll',sort_order:0}]};
  if(path==='/stock-control/counts'){
   if(method==='GET')return {counts:state.count?[state.count]:[]};
-  state.count??={id:'count',status:'draft',shift_id:'shift',schedule_id:null};return {id:'count',count:state.count};
+  state.count??={id:'count',status:'draft',shift_id:'shift',schedule_id:body.scheduleId};return {id:'count',count:state.count};
  }
  if(path==='/stock-control/counts/count')return {count:state.count,entries:state.entries};
  if(path==='/stock-control/counts/count/entries'){

@@ -13,8 +13,8 @@
 .content h3{margin:0;font-size:19px}.content h4{margin:0 0 12px;font-size:15px;color:#28425d}
 .columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
 .content label{display:grid;gap:6px;color:#4b6077;font-size:13px;font-weight:600}
-.content input,.content textarea{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #bdccda;border-radius:8px;background:#fff;color:#182d45;padding:9px 12px;font:inherit;font-size:16px}
-.content input:focus-visible,.content textarea:focus-visible,.tabs button:focus-visible,.primary:focus-visible{outline:3px solid #63a6d5;outline-offset:2px}
+.content input,.content textarea,.content select{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #bdccda;border-radius:8px;background:#fff;color:#182d45;padding:9px 12px;font:inherit;font-size:16px}
+.content input:focus-visible,.content textarea:focus-visible,.content select:focus-visible,.tabs button:focus-visible,.primary:focus-visible{outline:3px solid #63a6d5;outline-offset:2px}
 .row,.stockRow{display:grid;grid-template-columns:minmax(110px,1fr) minmax(100px,145px) minmax(100px,145px);gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #e7edf4}
 .row strong,.stockRow strong{font-size:14px;overflow-wrap:anywhere}
 .stockRow{grid-template-columns:minmax(160px,1fr) minmax(120px,170px) 70px;min-height:58px}
