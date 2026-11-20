@@ -144,5 +144,67 @@ try{
  await page.setViewportSize({width:1024,height:768});await bounds();await page.screenshot({path:path.join(output,'modifier-choose-tablet.png')});
  await picker.getByRole('button',{name:'Add to cart',exact:true}).click();await picker.waitFor({state:'hidden'});
  console.log('PASS real API modifier picker: optional over 30, configured quantity, required choice, upper bound and tablet layout');
+ const notes=page.getByRole('textbox',{name:/^Notes for /});
+ await notes.fill('Less salt with Coke');
+ await page.getByRole('button',{name:'Clear All',exact:true}).click();
+ await expect(notes).toHaveCount(0);
+ const plain=(await request('/products')).find(p=>p.id!==product.id&&p.available);
+ await page.getByPlaceholder('Search menu...').fill(plain.name);
+ const add=page.getByRole('button',{name:'Add to cart',exact:true}).first();
+ await request('/shift/open','POST',{openingCash:0});
+ const partner=await request('/sales-channels','POST',{name:'QA Delivery',kind:'partner'});
+ await request('/sales-channels/prices','POST',{entries:[{productId:plain.id,channelId:partner.id,priceMinor:12000}]});
+ await page.reload();
+ await page.getByPlaceholder('Search menu...').fill(plain.name);
+ await add.click();await notes.fill('No onions');await add.click();
+ await expect(notes).toHaveCount(2);
+ await notes.nth(1).fill('No pickles');
+ const lines=page.locator('.line');
+ await lines.first().locator('button').last().click();
+ await expect(notes.first()).toHaveValue('No onions');
+ await lines.nth(1).locator('button').first().click();
+ await expect(notes).toHaveCount(1);
+ await add.click();await notes.nth(1).fill('No pickles');
+ await expect(page.getByRole('spinbutton',{name:/^Item Discount for /})).toHaveCount(0);
+ async function complete(button, expected){
+  const sale=page.waitForResponse(r=>r.url().endsWith('/api/orders')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:button,exact:true}).click();
+  const reply=await sale;
+  assert(reply.ok(),await reply.text());
+  const order=await reply.json(),history=await request('/orders/'+order.id);
+  assert.deepEqual(history.items.map(x=>x.instructions).sort(),[...expected].sort());
+  await page.getByRole('heading',{name:'Payment recorded'}).waitFor();
+  for(const note of expected) await expect(page.locator('.receipt')).toContainText(note);
+  await expect(notes).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  return history;
+ }
+ await page.getByPlaceholder('Cash received (THB)').fill('9999');
+ const cash=await complete('Complete Cash Sale',['No onions','No pickles']);
+ assert.equal(cash.items.find(x=>x.instructions==='No onions').quantity,2);
+ await page.reload();await page.getByPlaceholder('Search menu...').fill(plain.name);
+ await add.click();await notes.fill('Cut burger in half');
+ await page.getByRole('combobox',{name:'Payment method',exact:true}).click();
+ await page.getByRole('option',{name:'QR',exact:true}).click();
+ await complete('Confirm QR Received',['Cut burger in half']);
+ await page.reload();await page.getByPlaceholder('Search menu...').fill(plain.name);
+ await page.getByRole('button',{name:'Delivery Partner',exact:true}).click();
+ await add.click();await notes.fill('Extra sauce');
+ const itemDiscount=page.getByRole('spinbutton',{name:/^Item Discount for /});
+ await itemDiscount.fill('20');
+ await page.getByRole('textbox',{name:'Partner order number'}).fill('QA-ITEM-NOTES');
+ await page.getByRole('spinbutton',{name:'Partner food total'}).fill('100');
+ await expect(page.getByText('Ticket reconciled',{exact:true})).toBeVisible();
+ for(const [width,height] of [[820,1180],[1180,820]]){
+  await page.setViewportSize({width,height});await bounds();
+  const cartLine=await lines.first().boundingBox(),discountBox=await itemDiscount.boundingBox(),notesBox=await notes.boundingBox();
+  assert(discountBox.width>=cartLine.width-28&&discountBox.height>=44&&discountBox.y>=notesBox.y+notesBox.height,'Item inputs occupy separate touchscreen rows');
+  await itemDiscount.scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(output,'partner-item-fields-'+width+'.png')});
+ }
+ const delivery=await complete('Record Delivery Order',['Extra sauce']);
+ assert.equal(delivery.partner_item_discount,2000);
+ assert.equal(delivery.total-delivery.discount_total,10000);
+ console.log('PASS item notes, identical items, quantity, removal, Clear All, Cash/QR/partner receipt history, reconciliation, and tablet orientations');
  assert.deepEqual(errors,[]);console.log(JSON.stringify({status:'PASS',base,snapshots:7,isolatedDatabase:true,hardwareValidated:false}));
 }finally{await browser?.close();await new Promise(r=>web.close(r));if(api.exitCode===null){api.kill();await new Promise(r=>api.once('exit',r))}await fixture.close();rmSync(data,{recursive:true,force:true})}

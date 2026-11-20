@@ -53,6 +53,7 @@ try{
  assert.equal(out.length,1,'Idempotent retries must not create extra KDS deliveries');
  const snapshot=JSON.parse(out[0].payload);
  assert.equal(snapshot.items[0].quantity,2);
+ assert.equal(snapshot.items[0].instructions,'Less salt');
  assert.equal(snapshot.items[0].modifiers[0].priceMinor,150);
  assert.equal(snapshot.routingStatus,'awaiting_configuration','Cannot pretend station routing is complete');
  assert.equal(db.prepare('SELECT COUNT(*) n FROM order_item_modifiers').get().n,1);
