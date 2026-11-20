@@ -8,6 +8,7 @@
 .tabs{display:flex;gap:8px;overflow-x:auto;border-bottom:1px solid #d9e2ec;padding-bottom:10px}
 .tabs button{flex:0 0 auto;min-height:44px;border:1px solid #d3deea;background:#fff;color:#27425e;border-radius:9px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
 .tabs button[aria-current=page]{background:#163f65;color:#fff;border-color:#163f65}
+.stageStatus{display:block;font-size:11px;font-weight:600;min-height:14px}
 .content{display:grid;gap:16px;background:#fff;border:1px solid #dce5ee;border-radius:14px;padding:clamp(16px,2vw,24px);box-shadow:0 6px 24px rgba(20,46,76,.05)}
 .content h3{margin:0;font-size:19px}.content h4{margin:0 0 12px;font-size:15px;color:#28425d}
 .columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}

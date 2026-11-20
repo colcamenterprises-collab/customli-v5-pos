@@ -31,6 +31,11 @@ try{
  assert.equal(await page.evaluate(()=>window.closingFixture.state.reconciliation.payload.cashMinor),12000);
  await page.getByRole('button',{name:'Stock count'}).click();
  await page.getByText('0 of 1 counted').waitFor();
+ await page.evaluate(()=>{window.closingFixture.offline=true});
+ await page.reload();
+ await page.getByRole('button',{name:'Stock count'}).click();
+ await page.getByText('Burger rolls').waitFor();
+ await page.evaluate(()=>{window.closingFixture.offline=false});
  await page.getByRole('button',{name:'Submit stock count'}).click();
  await page.getByText('Count every selected item. Enter 0 when there is none.').waitFor();
  await page.getByLabel('Quantity').fill('0');
@@ -42,7 +47,7 @@ try{
  await page.getByRole('searchbox',{name:'Find an item'}).waitFor();
  await page.getByLabel('Quantity').fill('12');
  await page.getByRole('button',{name:'Submit requisition'}).click();
- await page.getByRole('button',{name:'Requisition submitted'}).waitFor({timeout:12000});
+ await page.getByRole('button',{name:'Requisition submitted',exact:true}).waitFor({timeout:12000});
  assert.equal(await page.evaluate(()=>window.closingFixture.state.requestItems[0].requested_base),12);
  for(const width of [390,820,1440]){
   await page.setViewportSize({width,height:900});
