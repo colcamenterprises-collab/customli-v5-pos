@@ -109,6 +109,7 @@ test('manual receipts cannot bypass purchase receiving; sale snapshots do not re
 test('physical counts calculate interval variance and produce pack-rounded requisitions',()=>{
  const db=fixture(),owner={id:'owner',role:'Owner',tenantId:'a',device:{locationId:'one'}};
  assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5}).status,200);
+ assert.equal(call(db,'/settings','PUT',{model:'smart',countsEnabled:true,requisitionsEnabled:true,timezone:'Asia/Bangkok'}).status,200);
  const first=call(db,'/counts','POST',{shiftId:'shift'}).body.id;
  call(db,'/counts/'+first+'/entries','PUT',{entries:[{itemId:'beef',quantity:10}]});call(db,'/counts/'+first+'/submit','POST');
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T01:00:00Z' WHERE id=?").run(first);
@@ -130,6 +131,8 @@ test('physical counts calculate interval variance and produce pack-rounded requi
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T05:00:00Z' WHERE id=?").run(second);
  const result=stockVariance(db,{tenant:'a',location:'one'},second,'beef');
  assert.equal(result.expected,4000);assert.equal(result.difference,-800);assert.equal(result.status,'outside_tolerance');
+ assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:1}).status,200);
+ assert.equal(stockVariance(db,{tenant:'a',location:'one'},second,'beef').toleranceBase,500);
  const exceptions=call(db,'/variance?itemId=beef&status=outside_tolerance').body.variance;
  assert.equal(exceptions.length,1);assert.equal(exceptions[0].difference,-800);
  assert.equal(call(db,'/variance?itemId=beef','GET',{}, {...owner,tenantId:'other'}).body.variance.length,0);
