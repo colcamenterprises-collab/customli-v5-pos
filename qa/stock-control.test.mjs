@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {migrateFoodModel} from '../food-model.mjs';
 import {migratePurchasing} from '../purchasing.mjs';
-import {migrateRecipeCosting} from '../recipe-costing.mjs';
+import {migrateRecipeCosting,handleRecipeCosting} from '../recipe-costing.mjs';
 import {migrateStockControl,handleStockControl,stockVariance} from '../stock-control.mjs';
 import {migrateShiftReconciliation} from '../shift-reconciliation.mjs';
 import {toBase,purchasePackBase,variance,suggestPurchase,consumptionFromSnapshots} from '../stock-math.mjs';
+import {migrateSaleCosts,snapshotSaleCost} from '../sales-costs.mjs';
 
 function fixture(){const db=new DatabaseSync(':memory:');db.exec(`PRAGMA foreign_keys=ON;
  CREATE TABLE products(id TEXT PRIMARY KEY,name TEXT NOT NULL,category TEXT NOT NULL,price INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1);
@@ -234,4 +235,78 @@ test('disabled stock stages reject writes while preserving historical reads and 
  assert.equal(call(db,'/counts').status,200);
  assert.equal(call(db,'/requisitions').status,200);
  assert.equal(call(db,'/counts','POST',{shiftId:'shift'},{id:'other',role:'Owner',tenantId:'a',device:{locationId:'two'}}).status,201);
+});
+
+test('end-to-end recipe sale, count variance, replenishment, partial receipt and next-shift continuity',()=>{
+ const db=fixture(),owner={id:'owner',role:'Owner',tenantId:'a',device:{locationId:'one'}};
+ db.exec("INSERT INTO shifts VALUES('prior','2026-11-19T00:00:00Z',NULL,0)");
+ db.exec(`ALTER TABLE order_items ADD COLUMN product_id TEXT;
+  ALTER TABLE order_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE order_item_cost_snapshots ADD COLUMN recipe_id TEXT;
+  ALTER TABLE order_item_cost_snapshots ADD COLUMN recipe_name TEXT;
+  ALTER TABLE order_item_cost_snapshots ADD COLUMN per_item_cost_minor INTEGER;
+  ALTER TABLE order_item_cost_snapshots ADD COLUMN total_cost_minor INTEGER;
+  ALTER TABLE order_item_cost_snapshots ADD COLUMN recorded_at TEXT;
+  CREATE TABLE modifier_options(id TEXT PRIMARY KEY);
+  CREATE TABLE order_item_modifiers(order_item_id TEXT,option_id TEXT,option_name TEXT,quantity INTEGER);
+  INSERT INTO products(id,name,category,price,active) VALUES('burger','Test Burger','Burgers',12000,1);`);
+ migrateSaleCosts(db);
+ const recipeRes={writeHead(status){this.status=status},end(payload){this.data=JSON.parse(payload)}};
+ handleRecipeCosting(new URL('https://example.test/v5/api/recipe-costing'),'POST',recipeRes,db,owner,{
+  name:'Test Burger',yieldQuantity:1,yieldUnit:'burger',productIds:['burger'],
+  lines:[{itemId:'beef',lineType:'ingredient',quantity:90,unitUsed:'g',wastePercent:0}]
+ });
+ assert.equal(recipeRes.status,201,'Recipe configured with a purchasing-linked ingredient');
+ call(db,'/settings','PUT',{model:'smart',salesEnabled:true,cleaningEnabled:true,countsEnabled:true,requisitionsEnabled:true,receivingRequired:true,timezone:'Asia/Bangkok'},owner);
+ call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5},owner);
+ const openingSchedule=call(db,'/schedules','POST',{name:'Acceptance opening',frequency:'shift',itemIds:['beef']},owner).body.id;
+ const opening=call(db,'/counts','POST',{shiftId:'prior',scheduleId:openingSchedule},owner).body.id;
+ call(db,'/counts/'+opening+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:10}]},owner);
+ call(db,'/counts/'+opening+'/submit','POST',{},owner);
+
+ const initialPurchase=call(db,'/purchases','POST',{idempotencyKey:'acceptance-delivery-1',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:150000}]},owner);
+ assert.equal(initialPurchase.status,201);
+ const initialLine=call(db,'/purchases/'+initialPurchase.body.purchase.id,'GET',{},owner).body.lines[0];
+ assert.equal(call(db,'/purchases/'+initialPurchase.body.purchase.id+'/receive','POST',{lineId:initialLine.id,usableQuantity:5,unit:'kg',idempotencyKey:'acceptance-receipt-1',shiftId:'shift'},owner).status,201);
+
+ db.prepare('INSERT INTO orders VALUES(?,?,?)').run('acceptance-sale',new Date().toISOString(),'paid');
+ db.prepare('INSERT INTO order_items(id,order_id,product_id,quantity) VALUES(?,?,?,?)').run('acceptance-sale-line','acceptance-sale','burger',2);
+ snapshotSaleCost(db,'acceptance-sale-line','burger',2);
+ const historical=db.prepare('SELECT quantity,complete,components_json FROM order_item_cost_snapshots WHERE order_item_id=?').get('acceptance-sale-line');
+ assert.equal(historical.complete,1,'POS sale has a complete immutable recipe snapshot');
+ assert.equal(consumptionFromSnapshots([historical],'beef').quantity,180,'Two sold burgers consume two recipe portions');
+ const waste=call(db,'/movements','POST',{kind:'waste',itemId:'beef',quantity:.2,unit:'kg',reason:'Dropped during service',idempotencyKey:'acceptance-waste',shiftId:'shift'},owner);
+ assert.equal(waste.status,201);
+
+ const closingSchedule=call(db,'/schedules','POST',{name:'Acceptance closing',frequency:'shift',itemIds:['beef']},owner).body.id;
+ const closing=call(db,'/counts','POST',{shiftId:'shift',scheduleId:closingSchedule},owner).body.id;
+ call(db,'/counts/'+closing+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:14.62}]},owner);
+ call(db,'/counts/'+closing+'/submit','POST',{},owner);
+ const calculated=stockVariance(db,{tenant:'a',location:'one'},closing,'beef');
+ assert.equal(calculated.expected,14620);
+ assert.equal(calculated.difference,0);
+ assert.equal(calculated.status,'within_tolerance');
+
+ const req=call(db,'/requisitions','POST',{shiftId:'shift',countId:closing,idempotencyKey:'acceptance-requisition'},owner);
+ assert.equal(req.status,201);
+ const suggested=call(db,'/requisitions/'+req.body.id).body.items;
+ assert.equal(suggested.length,1);
+ assert.equal(suggested[0].requested_base,1000,'PAR recommendation rounds the 380 g shortfall to one 1 kg purchase pack');
+ assert.equal(call(db,'/requisitions/'+req.body.id+'/submit','POST',{},owner).status,200);
+ const nextPurchase=call(db,'/purchases','POST',{requisitionId:req.body.id,idempotencyKey:'acceptance-purchase-2',lines:[{itemId:'beef',quantity:1,unit:'kg',totalPriceMinor:30000}]},owner);
+ assert.equal(nextPurchase.status,201);
+ const nextLine=call(db,'/purchases/'+nextPurchase.body.purchase.id,'GET',{},owner).body.lines[0];
+ assert.equal(call(db,'/purchases/'+nextPurchase.body.purchase.id+'/receive','POST',{lineId:nextLine.id,usableQuantity:.5,unit:'kg',rejectedQuantity:0,idempotencyKey:'acceptance-partial-receipt',shiftId:'shift'},owner).status,201);
+ assert.equal(call(db,'/purchases/'+nextPurchase.body.purchase.id).body.purchase.status,'partially_received');
+
+ db.exec("INSERT INTO shifts VALUES('next','2026-11-20T06:00:00Z',NULL,0)");
+ const nextCount=call(db,'/counts','POST',{shiftId:'next'},owner).body.id;
+ call(db,'/counts/'+nextCount+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:15.12}]},owner);
+ call(db,'/counts/'+nextCount+'/submit','POST',{},owner);
+ const nextVariance=stockVariance(db,{tenant:'a',location:'one'},nextCount,'beef');
+ assert.equal(nextVariance.opening,14620);
+ assert.equal(nextVariance.received,500);
+ assert.equal(nextVariance.expected,15120);
+ assert.equal(nextVariance.difference,0);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM stock_audit').get().n>0,true,'Configuration, count and movement changes are auditable');
 });
