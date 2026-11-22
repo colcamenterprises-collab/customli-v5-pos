@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';import {DatabaseSync} from 'node:sqlite';
 import {migrateFoodModel,handleFoodModel} from '../food-model.mjs';import {migratePurchasing} from '../purchasing.mjs';import {migrateRecipeCosting,handleRecipeCosting} from '../recipe-costing.mjs';
 import {migrateSaleCosts,snapshotSaleCost} from '../sales-costs.mjs';
+import {consumptionFromSnapshots} from '../stock-math.mjs';
 function db(){const d=new DatabaseSync(':memory:');d.exec('PRAGMA foreign_keys=ON;CREATE TABLE products(id TEXT PRIMARY KEY,name TEXT,active INTEGER,price INTEGER);');migrateFoodModel(d);migratePurchasing(d);migrateRecipeCosting(d);return d}
 const owner={id:'owner',role:'Owner',permissions:new Set(['operations.recipes','operations.costing'])};
 function call(d,path,method='GET',body={},user=owner){const res={writeHead(status){this.status=status},end(s){this.data=JSON.parse(s)}};handleRecipeCosting(new URL('http://localhost/v5/api/recipe-costing'+path),method,res,d,user,body);return res}
@@ -32,6 +33,17 @@ test('checkout snapshots use purchasing and packaging cost for every linked menu
  d.exec("UPDATE food_ingredients SET pack_cost_minor=40000 WHERE id='beef'");snapshotSaleCost(d,'sale-2','set',1);
  const costs=d.prepare('SELECT per_item_cost_minor FROM order_item_cost_snapshots ORDER BY order_item_id').all().map(x=>x.per_item_cost_minor);
  assert.deepEqual(costs,[2800,3700]);
+});
+test('sale-time modifier removals reduce stock usage and additions increase it',()=>{
+ const d=db();d.exec("CREATE TABLE order_items(id TEXT PRIMARY KEY);CREATE TABLE modifier_options(id TEXT PRIMARY KEY);CREATE TABLE order_item_modifiers(order_item_id TEXT,option_id TEXT,option_name TEXT,quantity INTEGER);INSERT INTO products VALUES('burger','Burger',1,10000);INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at) VALUES('pickle','Pickles','g',1000,'g',1000,'2026-11-20'),('cheese','Cheese','g',1000,'g',2000,'2026-11-20');INSERT INTO modifier_options VALUES('no-pickle'),('extra-cheese')");
+ migrateSaleCosts(d);
+ const recipe=call(d,'','POST',{name:'Burger',yieldQuantity:1,productIds:['burger'],lines:[{itemId:'pickle',lineType:'ingredient',quantity:10,unitUsed:'g'}]});assert.equal(recipe.status,201);
+ d.exec("INSERT INTO order_items VALUES('sale-line');INSERT INTO order_item_modifiers VALUES('sale-line','no-pickle','No pickles',1),('sale-line','extra-cheese','Extra cheese',1);INSERT INTO food_modifier_ingredients VALUES('no-pickle','pickle',-10),('extra-cheese','cheese',15)");
+ snapshotSaleCost(d,'sale-line','burger',2);
+ const sale=d.prepare('SELECT order_item_id,quantity,complete,reason,components_json FROM order_item_cost_snapshots WHERE order_item_id=?').get('sale-line');
+ assert.equal(sale.complete,1);
+ assert.equal(consumptionFromSnapshots([sale],'pickle').quantity,0);
+ assert.equal(consumptionFromSnapshots([sale],'cheese').quantity,30);
 });
 test('a case of bottles costs accurately by bottle or volume without changing pack details',()=>{
  const d=db();d.exec("INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,each_quantity,each_unit,units_per_pack,updated_at) VALUES('water','Water case','ml',12,'each',14400,600,'ml',12,'2026-11-19')");

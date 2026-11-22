@@ -31,10 +31,13 @@ export function snapshotSaleCost(db,lineId,productId,qty){
   const ingredients=db.prepare('SELECT i.*,c.quantity FROM food_recipe_components c JOIN food_ingredients i ON i.id=c.ingredient_id WHERE c.recipe_id=?').all(recipe.id);
   if(hasLines&&current?.lines.length){
    if(current.cost_per_serve_minor===null){complete=false;reason='Recipe has incomplete costing lines';}
-   else{components=current.lines.map(l=>({ingredient_id:l.item_id,name:l.name,quantity:l.quantity,unit:l.unit_used,line_type:l.line_type,cost_minor:l.cost_minor,cost_source:l.cost_source}));unitCost=current.cost_per_serve_minor;}
+   else{components=current.lines.map(l=>({ingredient_id:l.item_id,name:l.name,quantity:l.quantity,unit:l.unit_used,line_type:l.line_type,cost_minor:l.cost_minor,cost_source:l.cost_source,
+    // Capture physical consumption at sale time. Future recipe and pack edits
+    // must not rewrite the history of this order.
+    stock_base_per_item:l.item_id&&l.quantity_base!=null?l.quantity_base/recipe.yield_quantity*(1+l.waste_percent/100)*(1+recipe.waste_percent/100):null}));unitCost=current.cost_per_serve_minor;}
   }else if(!ingredients.length){complete=false;reason='Recipe has no ingredient quantities';}
   else if(!hasLines||!current?.lines.length){
-   components=ingredients.map(r=>({ingredient_id:r.id,name:r.name,quantity:r.quantity,cost_minor:costOf(r,r.quantity)}));
+   components=ingredients.map(r=>({ingredient_id:r.id,name:r.name,quantity:r.quantity,cost_minor:costOf(r,r.quantity),stock_base_per_item:r.quantity/recipe.yield_quantity*(1+recipe.waste_percent/100)}));
    let batch=components.reduce((n,r)=>n+r.cost_minor,0)+recipe.packaging_cost_minor;
    unitCost=Math.round(Math.round(batch*(1+recipe.waste_percent/100))/recipe.yield_quantity);
   }
@@ -43,7 +46,7 @@ export function snapshotSaleCost(db,lineId,productId,qty){
   for(const m of mods){
    const mappings=db.prepare('SELECT i.*,fm.quantity FROM food_modifier_ingredients fm JOIN food_ingredients i ON i.id=fm.ingredient_id WHERE fm.option_id=?').all(m.option_id);
    if(!mappings.length){complete=false;reason='Modifier missing ingredient mapping: '+m.option_name;break;}
-   for(const ing of mappings){const c=costOf(ing,ing.quantity*m.quantity);unitCost+=c;components.push({ingredient_id:ing.id,name:ing.name,modifier:m.option_name,quantity:ing.quantity*m.quantity,cost_minor:c});}
+   for(const ing of mappings){const c=costOf(ing,ing.quantity*m.quantity);unitCost+=c;components.push({ingredient_id:ing.id,name:ing.name,modifier:m.option_name,line_type:'modifier',quantity:ing.quantity*m.quantity,cost_minor:c,stock_base_per_item:ing.quantity*m.quantity});}
   }
  }
  if(complete&&unitCost<0){complete=false;reason='Modifier deductions exceed recipe cost';}
