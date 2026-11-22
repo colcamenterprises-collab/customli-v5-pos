@@ -15,7 +15,17 @@ manifest=$(/opt/android-sdk/build-tools/35.0.0/aapt dump badging "$src" | sed -n
 reference=$(/opt/android-sdk/build-tools/35.0.0/apksigner verify --print-certs "$base/Customli-V5-Universal-1.2.4.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | sed -n "1p")
 current=$(/opt/android-sdk/build-tools/35.0.0/apksigner verify --print-certs "$src" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | sed -n "1p")
 [[ -n "$reference" && "$reference" == "$current" ]] || { echo 'Production signing certificate mismatch' >&2; exit 1; }
-if [[ "$src" != "$base/$name" ]]; then install -m 0644 "$src" "$base/$name"; fi
+if [[ "$src" != "$base/$name" ]]; then # Refuse accidental downgrade or re-publication of an older version.
+if [[ -f "$base/latest-release.json" ]]; then
+  python3 - "$base/latest-release.json" "$version" <<'PY_VERSION'
+import json,sys
+old=json.load(open(sys.argv[1]))['version']
+new=sys.argv[2]
+if tuple(map(int,new.split('.'))) < tuple(map(int,old.split('.'))):
+    raise SystemExit('Refusing to downgrade latest Android release from '+old+' to '+new)
+PY_VERSION
+fi
+install -m 0644 "$src" "$base/$name"; fi
 ln -sfn "$name" "$base/.latest-next.apk"
 mv -Tf "$base/.latest-next.apk" "$base/Customli-V5-Universal-Latest.apk"
 python3 - "$base" "$version" "$name" <<'PY'
