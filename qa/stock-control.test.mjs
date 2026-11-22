@@ -263,13 +263,15 @@ test('end-to-end recipe sale, count variance, replenishment, partial receipt and
  const opening=call(db,'/counts','POST',{shiftId:'prior',scheduleId:openingSchedule},owner).body.id;
  call(db,'/counts/'+opening+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:10}]},owner);
  call(db,'/counts/'+opening+'/submit','POST',{},owner);
+ db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T01:00:00Z' WHERE id=?").run(opening);
 
  const initialPurchase=call(db,'/purchases','POST',{idempotencyKey:'acceptance-delivery-1',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:150000}]},owner);
  assert.equal(initialPurchase.status,201);
  const initialLine=call(db,'/purchases/'+initialPurchase.body.purchase.id,'GET',{},owner).body.lines[0];
  assert.equal(call(db,'/purchases/'+initialPurchase.body.purchase.id+'/receive','POST',{lineId:initialLine.id,usableQuantity:5,unit:'kg',idempotencyKey:'acceptance-receipt-1',shiftId:'shift'},owner).status,201);
+ db.prepare("UPDATE stock_movements SET created_at='2026-11-20T02:00:00Z' WHERE kind='receipt'").run();
 
- db.prepare('INSERT INTO orders VALUES(?,?,?)').run('acceptance-sale',new Date().toISOString(),'paid');
+ db.prepare('INSERT INTO orders VALUES(?,?,?)').run('acceptance-sale','2026-11-20T03:00:00Z','paid');
  db.prepare('INSERT INTO order_items(id,order_id,product_id,quantity) VALUES(?,?,?,?)').run('acceptance-sale-line','acceptance-sale','burger',2);
  snapshotSaleCost(db,'acceptance-sale-line','burger',2);
  const historical=db.prepare('SELECT quantity,complete,components_json FROM order_item_cost_snapshots WHERE order_item_id=?').get('acceptance-sale-line');
@@ -277,11 +279,13 @@ test('end-to-end recipe sale, count variance, replenishment, partial receipt and
  assert.equal(consumptionFromSnapshots([historical],'beef').quantity,180,'Two sold burgers consume two recipe portions');
  const waste=call(db,'/movements','POST',{kind:'waste',itemId:'beef',quantity:.2,unit:'kg',reason:'Dropped during service',idempotencyKey:'acceptance-waste',shiftId:'shift'},owner);
  assert.equal(waste.status,201);
+ db.prepare("UPDATE stock_movements SET created_at='2026-11-20T04:00:00Z' WHERE kind='waste'").run();
 
  const closingSchedule=call(db,'/schedules','POST',{name:'Acceptance closing',frequency:'shift',itemIds:['beef']},owner).body.id;
  const closing=call(db,'/counts','POST',{shiftId:'shift',scheduleId:closingSchedule},owner).body.id;
  call(db,'/counts/'+closing+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:14.62}]},owner);
  call(db,'/counts/'+closing+'/submit','POST',{},owner);
+ db.prepare("UPDATE stock_counts SET submitted_at='2026-11-21T00:00:00Z' WHERE id=?").run(closing);
  const calculated=stockVariance(db,{tenant:'a',location:'one'},closing,'beef');
  assert.equal(calculated.expected,14620);
  assert.equal(calculated.difference,0);
@@ -297,6 +301,7 @@ test('end-to-end recipe sale, count variance, replenishment, partial receipt and
  assert.equal(nextPurchase.status,201);
  const nextLine=call(db,'/purchases/'+nextPurchase.body.purchase.id,'GET',{},owner).body.lines[0];
  assert.equal(call(db,'/purchases/'+nextPurchase.body.purchase.id+'/receive','POST',{lineId:nextLine.id,usableQuantity:.5,unit:'kg',rejectedQuantity:0,idempotencyKey:'acceptance-partial-receipt',shiftId:'shift'},owner).status,201);
+ db.prepare("UPDATE stock_movements SET created_at='2026-11-22T00:00:00Z' WHERE kind='receipt' AND created_at>'2026-11-20T02:00:00Z'").run();
  assert.equal(call(db,'/purchases/'+nextPurchase.body.purchase.id).body.purchase.status,'partially_received');
 
  db.exec("INSERT INTO shifts VALUES('next','2026-11-20T06:00:00Z',NULL,0)");
