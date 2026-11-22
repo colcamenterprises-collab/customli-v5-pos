@@ -28,6 +28,18 @@ test('item conversions and PAR rounding preserve dimensions',()=>{const beef={ba
  assert.throws(()=>toBase({...cans,pack_type:'Case'},1,'carton'));
  assert.throws(()=>toBase(beef,2,'carton'));
 });
+test('modifier snapshots add and remove stock consumption without making the sale incomplete',()=>{
+ const row={order_item_id:'modifier-line',quantity:2,complete:1,components_json:JSON.stringify([
+  {ingredient_id:'pickle',line_type:'ingredient',stock_base_per_item:10},
+  {ingredient_id:'pickle',line_type:'modifier',stock_base_per_item:-10},
+  {ingredient_id:'cheese',line_type:'modifier',stock_base_per_item:15}
+ ])};
+ assert.equal(consumptionFromSnapshots([row],'pickle').quantity,0);
+ assert.equal(consumptionFromSnapshots([row],'cheese').quantity,30);
+ const invalid={...row,components_json:JSON.stringify([{ingredient_id:'pickle',line_type:'ingredient',stock_base_per_item:5},{ingredient_id:'pickle',line_type:'modifier',stock_base_per_item:-6}])};
+ assert.equal(consumptionFromSnapshots([invalid],'pickle').quantity,null,'A modifier cannot create negative physical consumption');
+ assert.match(consumptionFromSnapshots([invalid],'pickle').missing[0].reason,/reductions exceed/);
+});
 test('manual requisition retries use a scoped request key without duplicate rows',()=>{const db=fixture(),body={shiftId:'shift',idempotencyKey:'offline-request-1'};
  const first=call(db,'/requisitions','POST',body);assert.equal(first.status,201);
  assert.equal(call(db,'/requisitions','POST',body).body.id,first.body.id);

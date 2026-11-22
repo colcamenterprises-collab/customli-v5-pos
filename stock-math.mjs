@@ -60,8 +60,10 @@ export function consumptionFromSnapshots(rows,itemId){
   if(!row.complete){missing.push({orderItemId:row.order_item_id,reason:row.reason||'Uncosted sale'});continue}
   let components;
   try{components=JSON.parse(row.components_json)}catch{missing.push({orderItemId:row.order_item_id,reason:'Invalid sale snapshot'});continue}
-  if(!Array.isArray(components)||components.some(c=>c.line_type==='ingredient'&&!c.ingredient_id||c.ingredient_id&&(!Number.isFinite(c.stock_base_per_item)||c.stock_base_per_item<0))){missing.push({orderItemId:row.order_item_id,reason:'Sale has no complete stock snapshot'});continue}
-  quantity+=components.filter(c=>c.ingredient_id===itemId).reduce((n,c)=>n+c.stock_base_per_item*row.quantity,0);
+  if(!Array.isArray(components)||components.some(c=>c.line_type==='ingredient'&&!c.ingredient_id||c.ingredient_id&&(!Number.isFinite(c.stock_base_per_item)||c.stock_base_per_item<0&&c.line_type!=='modifier'))){missing.push({orderItemId:row.order_item_id,reason:'Sale has no complete stock snapshot'});continue}
+  const perIngredient=new Map();for(const component of components)if(component.ingredient_id)perIngredient.set(component.ingredient_id,(perIngredient.get(component.ingredient_id)||0)+component.stock_base_per_item);
+  if([...perIngredient.values()].some(value=>value< -1e-6)){missing.push({orderItemId:row.order_item_id,reason:'Modifier reductions exceed recipe stock usage'});continue}
+  quantity+=Math.max(0,perIngredient.get(itemId)||0)*row.quantity;
  }
  return {quantity:missing.length?null:round(quantity),knownQuantity:round(quantity),missing};
 }

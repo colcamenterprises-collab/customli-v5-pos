@@ -46,7 +46,7 @@ export function snapshotSaleCost(db,lineId,productId,qty){
   for(const m of mods){
    const mappings=db.prepare('SELECT i.*,fm.quantity FROM food_modifier_ingredients fm JOIN food_ingredients i ON i.id=fm.ingredient_id WHERE fm.option_id=?').all(m.option_id);
    if(!mappings.length){complete=false;reason='Modifier missing ingredient mapping: '+m.option_name;break;}
-   for(const ing of mappings){const c=costOf(ing,ing.quantity*m.quantity);unitCost+=c;components.push({ingredient_id:ing.id,name:ing.name,modifier:m.option_name,quantity:ing.quantity*m.quantity,cost_minor:c,stock_base_per_item:ing.quantity*m.quantity});}
+   for(const ing of mappings){const c=costOf(ing,ing.quantity*m.quantity);unitCost+=c;components.push({ingredient_id:ing.id,name:ing.name,modifier:m.option_name,line_type:'modifier',quantity:ing.quantity*m.quantity,cost_minor:c,stock_base_per_item:ing.quantity*m.quantity});}
   }
  }
  if(complete&&unitCost<0){complete=false;reason='Modifier deductions exceed recipe cost';}
