@@ -56,9 +56,9 @@ test('stock schedule rows are reusable and scoped by tenant and location',()=>{c
  assert.equal(call(db,'/schedules/'+created.body.id,'GET',{}, {id:'other',role:'Owner',tenantId:'b',device:{locationId:'one'}}).status,404);
  const count=call(db,'/counts','POST',{shiftId:'shift',scheduleId:created.body.id}).body.id;
  assert.equal(call(db,'/schedules/'+created.body.id,'PATCH',{name:'Daily critical',frequency:'daily',itemIds:['beef'],active:true}).status,200);
- assert.equal(call(db,'/counts/'+count+'/entries','PUT',{entries:[{itemId:'roll',quantity:0}]}).status,200);
+ assert.equal(call(db,'/counts/'+count+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'roll',quantity:0}]}).status,200);
  call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'daily',countUnit:'kg',tolerance:.5});
- assert.equal(call(db,'/counts/'+count+'/entries','PUT',{entries:[{itemId:'beef',quantity:1}]}).status,403);
+ assert.equal(call(db,'/counts/'+count+'/entries','PUT',{expectedRevision:1,entries:[{itemId:'beef',quantity:1}]}).status,403);
  assert.equal(call(db,'/counts/'+count+'/submit','POST').status,200);
  assert.deepEqual(JSON.parse(call(db,'/counts/'+count).body.count.schedule_snapshot_json),['roll']);
 });
@@ -69,12 +69,12 @@ test('count drafts distinguish blank from zero and enforce tenant and location',
  assert.equal(visible.par_base,undefined);assert.equal(visible.tolerance_base,undefined);
  const id=call(db,'/counts','POST',{shiftId:'shift'}).body.id;assert.ok(id);
  assert.equal(call(db,'/counts','POST',{shiftId:'shift'}).body.id,id);
- assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:null}]}).status,200);
+ assert.equal(call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:null}]}).status,200);
  assert.equal(call(db,'/counts/'+id+'/submit','POST').status,409);
- assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:0}]}).status,200);
+ assert.equal(call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:1,entries:[{itemId:'beef',quantity:0}]}).status,200);
  assert.equal(call(db,'/counts/'+id+'/submit','POST').status,200);
  assert.equal(call(db,'/counts/'+id).body.count.actor_id,'owner');
- assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:4}]}).status,409);
+ assert.equal(call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:2,entries:[{itemId:'beef',quantity:4}]}).status,409);
  assert.deepEqual(call(db,'/counts','GET',{},staff).body.counts,[]);
  assert.equal(call(db,'/counts/'+id,'GET',{},staff).status,403);
  assert.equal(call(db,'/counts/'+id,'GET',{}, {...staff,permissions:new Set(['operations.stock.history'])}).status,200);
@@ -82,6 +82,18 @@ test('count drafts distinguish blank from zero and enforce tenant and location',
  assert.equal(call(db,'/counts/'+id,'GET',{}, {id:'other',role:'Owner',tenantId:'a',device:{locationId:'two'}}).status,404);
  assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
 });
+test('shared stock count rejects stale writers until they explicitly reconcile',()=>{
+ const db=fixture(),a={id:'cook-a',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.count'])},b={...a,id:'cook-b'};
+ call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg'});
+ const id=call(db,'/counts','POST',{shiftId:'shift'}).body.id;
+ const first=call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:2}]},a);
+ assert.equal(first.status,200);assert.equal(first.body.revision,1);
+ const stale=call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:9}]},b);
+ assert.equal(stale.status,409);assert.equal(call(db,'/counts/'+id).body.entries[0].quantity_base,2000);
+ const resolved=call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:1,entries:[{itemId:'beef',quantity:9}]},b);
+ assert.equal(resolved.status,200);assert.equal(resolved.body.revision,2);assert.equal(call(db,'/counts/'+id).body.entries[0].quantity_base,9000);
+});
+
 test('checklist shift verification rejects cross-tenant and missing scope',()=>{
  const db=fixture(),staff={id:'cook',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.closing.checklist'])};
  const oldTenant=process.env.PLATFORM_TENANT_ID,oldLocation=process.env.PLATFORM_LOCATION_ID;
@@ -105,7 +117,7 @@ test('a second authorised staff member completes a shared draft and receives sub
  call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg'});
  const id=call(db,'/counts','POST',{shiftId:'shift'}).body.id;
  assert.equal(call(db,'/counts','GET',{},staff).body.counts[0].id,id);
- assert.equal(call(db,'/counts/'+id+'/entries','PUT',{entries:[{itemId:'beef',quantity:2}]},staff).status,200);
+ assert.equal(call(db,'/counts/'+id+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:2}]},staff).status,200);
  assert.equal(call(db,'/counts/'+id+'/submit','POST',{},staff).status,200);
  assert.equal(call(db,'/counts/'+id).body.count.actor_id,'cook');
  assert.equal(call(db,'/counts/'+id).body.entries[0].actor_id,'cook');
@@ -123,7 +135,7 @@ test('physical counts calculate interval variance and produce pack-rounded requi
  assert.equal(call(db,'/items/beef','PUT',{countEnabled:true,requisitionEnabled:true,frequency:'shift',countUnit:'kg',par:15,tolerance:.5}).status,200);
  assert.equal(call(db,'/settings','PUT',{model:'smart',countsEnabled:true,requisitionsEnabled:true,timezone:'Asia/Bangkok'}).status,200);
  const first=call(db,'/counts','POST',{shiftId:'shift'}).body.id;
- call(db,'/counts/'+first+'/entries','PUT',{entries:[{itemId:'beef',quantity:10}]});call(db,'/counts/'+first+'/submit','POST');
+ call(db,'/counts/'+first+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:10}]});call(db,'/counts/'+first+'/submit','POST');
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T01:00:00Z' WHERE id=?").run(first);
  const purchased=call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:150000}]},owner);
  const line=call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},owner).body.lines[0];
@@ -139,7 +151,7 @@ test('physical counts calculate interval variance and produce pack-rounded requi
  const second=call(db,'/counts','POST',{shiftId:'next'}).body.id;
  assert.equal(call(db,'/requisitions','POST',{shiftId:'shift',countId:first}).status,201);
  assert.equal(call(db,'/requisitions','POST',{shiftId:'shift',countId:second}).status,409);
- call(db,'/counts/'+second+'/entries','PUT',{entries:[{itemId:'beef',quantity:3.2}]});call(db,'/counts/'+second+'/submit','POST');
+ call(db,'/counts/'+second+'/entries','PUT',{expectedRevision:0,entries:[{itemId:'beef',quantity:3.2}]});call(db,'/counts/'+second+'/submit','POST');
  db.prepare("UPDATE stock_counts SET submitted_at='2026-11-20T05:00:00Z' WHERE id=?").run(second);
  const result=stockVariance(db,{tenant:'a',location:'one'},second,'beef');
  assert.equal(result.expected,4000);assert.equal(result.difference,-800);assert.equal(result.status,'outside_tolerance');

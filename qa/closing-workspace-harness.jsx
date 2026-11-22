@@ -22,11 +22,11 @@ async function request(path,method='GET',body){
  if(path==='/stock-control/schedules/daily')return {schedule:{id:'daily'},items:[{item_id:'roll',sort_order:0}]};
  if(path==='/stock-control/counts'){
   if(method==='GET')return {counts:state.count?[state.count]:[]};
-  state.count??={id:'count',status:'draft',shift_id:'shift',schedule_id:body.scheduleId};return {id:'count',count:state.count};
+  state.count??={id:'count',status:'draft',shift_id:'shift',schedule_id:body.scheduleId,revision:0};return {id:'count',count:state.count};
  }
  if(path==='/stock-control/counts/count')return {count:state.count,entries:state.entries};
  if(path==='/stock-control/counts/count/entries'){
-  state.entries=body.entries.map(e=>({item_id:e.itemId,quantity_base:e.quantity}));return {ok:true};
+  if(body.expectedRevision!==state.count.revision)failure('Another staff member saved this count.');state.entries=body.entries.map(e=>({item_id:e.itemId,quantity_base:e.quantity}));state.count.revision++;return {ok:true,revision:state.count.revision};
  }
  if(path==='/stock-control/counts/count/submit'){
   if(!state.entries.length||state.entries.some(e=>e.quantity_base===null))failure('Count every item.');
