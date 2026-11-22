@@ -175,6 +175,12 @@ test('partial receiving adds usable stock once and updates current purchase cost
  const duplicate=call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:5,unit:'kg',totalPriceMinor:180000}]},buyer);assert.equal(duplicate.status,200);
  assert.equal(call(db,'/purchases','POST',{idempotencyKey:'purchase-one',lines:[{itemId:'beef',quantity:9,unit:'kg',totalPriceMinor:180000}]},buyer).status,409);
  const line=call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},buyer).body.lines[0];
+ const tenantB={id:'tenant-b',role:'Owner',tenantId:'b',device:{locationId:'one'}},otherLocation={...buyer,device:{locationId:'two'}};
+ assert.deepEqual(call(db,'/purchases','GET',{},tenantB).body.purchases,[]);
+ assert.equal(call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},tenantB).status,404);
+ assert.equal(call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},otherLocation).status,404);
+ assert.equal(call(db,'/purchases/'+purchased.body.purchase.id+'/receive','POST',{lineId:'foreign-line',usableQuantity:1,unit:'kg',idempotencyKey:'foreign-receipt'},tenantB).status,404);
+ assert.deepEqual(call(db,'/movements','GET',{},tenantB).body.movements,[]);
  const receiver={id:'receiver',role:'Cashier',tenantId:'a',device:{locationId:'one'},permissions:new Set(['operations.stock.receive'])};
  const receiverView=call(db,'/purchases/'+purchased.body.purchase.id,'GET',{},receiver);
  assert.equal(receiverView.status,200);assert.equal(Object.hasOwn(receiverView.body.lines[0],'total_price_minor'),false);
