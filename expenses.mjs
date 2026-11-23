@@ -134,10 +134,12 @@ export function handleExpenses({db,p,url,method,b,user,res,send}) {
   if(!supplier||!description||!isoDate(date)||!amount||!expenseMethods.includes(payment))
    fail(400,'Enter receipt date, supplier, purpose, positive amount and payment method.');
   const id=randomUUID(),now=new Date().toISOString();
+  const tenantId=user.tenantId||process.env.PLATFORM_TENANT_ID;
   db.exec('BEGIN IMMEDIATE');
   try{
-   db.prepare('INSERT INTO business_expenses VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id,date,supplier,category,description,amount,payment,'business','manual',null,now,now,user.id,user.id);
+   db.prepare(`INSERT INTO business_expenses(id,receipt_date,supplier,category,description,amount_minor,payment_method,classification,source,bank_transaction_id,created_at,updated_at,created_by,updated_by,tenant_id)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id,date,supplier,category,description,amount,payment,'business','manual',null,now,now,user.id,user.id,tenantId);
    writeAudit(db,user.id,'expense.created','expense',id,{supplier,amount,category,payment});
    db.exec('COMMIT');
   }catch(e){db.exec('ROLLBACK');throw e;}
@@ -248,11 +250,13 @@ export function handleExpenses({db,p,url,method,b,user,res,send}) {
    if(matches.length)fail(409,'An expense with the same amount and nearby date was already entered manually. Review it before recording another.');
   }
   const expenseId=choice==='business'?randomUUID():null;
+  const tenantId=user.tenantId||process.env.PLATFORM_TENANT_ID;
   db.exec('BEGIN IMMEDIATE');
   try{
-   if(expenseId)db.prepare('INSERT INTO business_expenses VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+   if(expenseId)db.prepare(`INSERT INTO business_expenses(id,receipt_date,supplier,category,description,amount_minor,payment_method,classification,source,bank_transaction_id,created_at,updated_at,created_by,updated_by,tenant_id)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(expenseId,row.posted_date,supplier,category,description,row.amount_minor,'Bank statement','business',
-     'bank',row.id,new Date().toISOString(),new Date().toISOString(),user.id,user.id);
+     'bank',row.id,new Date().toISOString(),new Date().toISOString(),user.id,user.id,tenantId);
    db.prepare(`UPDATE expense_bank_transactions SET classification=?,supplier=?,category=?,purpose=?,
     expense_id=?,reviewed_at=?,reviewed_by=? WHERE id=?`)
     .run(choice,supplier,category,description,expenseId,new Date().toISOString(),user.id,row.id);
