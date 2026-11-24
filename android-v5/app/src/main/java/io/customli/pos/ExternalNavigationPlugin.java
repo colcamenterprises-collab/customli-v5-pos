@@ -12,7 +12,7 @@ public class ExternalNavigationPlugin extends Plugin {
   @PluginMethod
   public void openDashboard(PluginCall call) {
     try {
-      Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://customli.io/v5-dashboard/"));
+      Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(getContext().getString(R.string.customli_dashboard_url)));
       intent.addCategory(Intent.CATEGORY_BROWSABLE);
       getActivity().startActivity(intent);
       call.resolve();

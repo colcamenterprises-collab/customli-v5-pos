@@ -6,7 +6,9 @@ import './design-system.css';
 import styles from './universal.module.css';
 
 const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
-const AUTH=ORIGIN+'/v5-auth/api/auth';
+const AUTH=import.meta.env.VITE_AUTH_API_BASE||ORIGIN+'/v5-auth/api/auth';
+const POS_API=import.meta.env.VITE_API_BASE||ORIGIN+'/v5/api';
+const environment=import.meta.env.VITE_ANDROID_ENV||'production';
 const VERSION='1.2.6';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
@@ -22,7 +24,7 @@ async function request(url,token='',body,device){
 }
 function CustomerDisplay({token,device}){
  const [display,setDisplay]=useState(null),[offline,setOffline]=useState(false);
- useEffect(()=>{let active=true;const update=async()=>{try{const next=await request(ORIGIN+'/v5/api/display?posDeviceId='+encodeURIComponent(device.posDeviceId||''),token,undefined,device);if(active){setDisplay(next);setOffline(next.stale===true);}}catch{if(active)setOffline(true);}};update();const timer=setInterval(update,1000);return()=>{active=false;clearInterval(timer);};},[token,device.posDeviceId]);
+ useEffect(()=>{let active=true;const update=async()=>{try{const next=await request(POS_API+'/display?posDeviceId='+encodeURIComponent(device.posDeviceId||''),token,undefined,device);if(active){setDisplay(next);setOffline(next.stale===true);}}catch{if(active)setOffline(true);}};update();const timer=setInterval(update,1000);return()=>{active=false;clearInterval(timer);};},[token,device.posDeviceId]);
  const waiting=!display||display.state==='waiting';
  const safeLogo=display?.branding?.logo&&/^(?:https:\/\/customli\.io\/|data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$)/.test(display.branding.logo)?display.branding.logo:null;
  return <main className={styles.customer}>
@@ -71,7 +73,7 @@ function App(){
  useEffect(()=>{const handler=e=>{if(e.source!==document.querySelector('iframe')?.contentWindow||e.origin!==window.location.origin||e.data?.type!=='customli:open-dashboard')return;openDashboard()};window.addEventListener('message',handler);return()=>window.removeEventListener('message',handler)},[]);
  const accountToken=useRef(''),accountId=useRef(''),sessionExpiresAt=useRef(''),installationId=useRef('');
  const persist=async next=>{await deviceStore().save({credential:JSON.stringify(next)});setSaved(next);};
- const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-production-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
+ const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-'+environment+'-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
  const revoke=async message=>{const discovery=window.Capacitor?.Plugins?.DeviceDiscovery;if(discovery)await discovery.stop().catch(()=>{});clearKitchenCache();await deviceStore()?.clear();sessionStorage.clear();setSaved(null);setScreen('login');setError(message);};
  useEffect(()=>{let active=true;(async()=>{try{
   if(!window.Capacitor?.isNativePlatform?.()||!deviceStore())throw Error('Install the Customli Android application.');
@@ -90,7 +92,7 @@ function App(){
   useEffect(()=>{if(screen!=='setup'||mode!=='CDS'||!locationId||!accountToken.current)return;
   const location=locations.find(x=>x.id===locationId);if(!location)return;
   let active=true;
-  request(ORIGIN+'/v5/api/display/terminals',accountToken.current,undefined,
+  request(POS_API+'/display/terminals',accountToken.current,undefined,
    {locationId,installationId:installationId.current,mode:'CDS'}).then(rows=>{
     if(active){setDevices(rows);setPosDeviceId(rows.length===1?rows[0].id:'');}
    }).catch(error=>{if(active)setError(error.message)});

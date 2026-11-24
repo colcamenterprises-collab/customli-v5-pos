@@ -29,7 +29,7 @@ test('all three modes ship local assets and native transport bridge',()=>{
 test('native KDS never persists its credential in localStorage or shows code pairing',()=>{
  const kds=read('android-dist/kds/app.js');assert.doesNotMatch(kds,/localStorage\.(?:getItem|setItem|removeItem)\(tokenKey/);
  assert.doesNotMatch(kds,/Enter the eight-digit code/);assert.match(kds,/sessionStorage.getItem\(tokenKey\)/);
- assert.match(kds,/https:\/\/customli\.io\/v5-kds/);
+ assert.ok(kds.includes('https://customli.io/'+(process.env.CUSTOMLI_ANDROID_ENV==='test'?'v5-kds-test':'v5-kds')));
  assert.doesNotMatch(kds,/navigator.serviceWorker.register/);
 });
 test('offline authorization expires and online revocation closes mode',()=>{

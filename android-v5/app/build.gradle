@@ -1,10 +1,18 @@
 apply plugin: 'com.android.application'
 
+def customliEnvironment = System.getenv('CUSTOMLI_ANDROID_ENV') ?: 'production'
+if (!(customliEnvironment in ['test', 'production'])) throw new GradleException('Invalid Android environment')
+def testEnvironment = customliEnvironment == 'test'
+
 android {
     namespace "io.customli.pos"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "io.customli.v5pos"
+        if (testEnvironment) applicationIdSuffix ".test"
+        manifestPlaceholders = [customliLabel: testEnvironment ? 'Customli Test' : 'Customli',
+            customliScheme: testEnvironment ? 'customli-test' : 'customli']
+        resValue "string", "customli_dashboard_url", testEnvironment ? "https://customli.io/v5-dashboard-test/" : "https://customli.io/v5-dashboard/"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 10018
@@ -75,5 +83,13 @@ tasks.configureEach { task ->
     if (task.name.startsWith('merge') && task.name.endsWith('Assets')) {
         task.dependsOn 'buildLocalApplication'
         task.outputs.upToDateWhen { false }
+    }
+}
+
+tasks.named('preBuild').configure {
+    doFirst {
+        def marker = file('src/main/assets/customli-environment.txt')
+        if (!marker.exists() || marker.text.trim() != customliEnvironment)
+            throw new GradleException('Build the web assets for the selected Android environment first')
     }
 }
