@@ -92,7 +92,12 @@ export function createDocuments(order,template,packing,meta={}){
 }
 export function enqueuePrint(db,order,event='sale.completed',actor='system',eventId=''){const loc=location(db),packing=resolvePacking(db,order),key=[loc,order.id,packing.revision,event,eventId].join(':');
  const existing=db.prepare('SELECT id FROM print_batches WHERE event_key=?').get(key);if(existing)return existing.id;
- const batchId=randomUUID();db.prepare('INSERT INTO print_batches VALUES(?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now());
+ const batchId=randomUUID();const tenantId=process.env.PLATFORM_TENANT_ID;
+ if(tenantId){
+  db.prepare('INSERT INTO print_batches(id,location_id,order_id,revision,event_key,created_at,tenant_id) VALUES(?,?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now(),tenantId);
+ }else{
+  db.prepare('INSERT INTO print_batches(id,location_id,order_id,revision,event_key,created_at) VALUES(?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now());
+ }
  const all=templates(db,loc),policy=readPrintPolicy(db,loc),savedRoutes=db.prepare('SELECT * FROM printer_routes WHERE location_id=? AND trigger=? AND active=1').all(loc,event),automatic=event==='sale.completed',configuredRoutes=automatic?printPurposes.filter(p=>policy.auto[p]&&policy.printerAssignments[p]).map(p=>({printer_id:policy.printerAssignments[p],template_id:all.find(t=>t.purpose===p)?.id,filters:'{}',active:1})).filter(r=>r.template_id):[],routes=[...configuredRoutes,...savedRoutes.filter(r=>!automatic||!printPurposes.includes(all.find(t=>t.id===r.template_id)?.purpose)||policy.auto[all.find(t=>t.id===r.template_id)?.purpose])],seen=new Set();
  if(automatic&&db.prepare('SELECT 1 FROM native_print_owner WHERE location_id=?').get(loc)){
   for(const purpose of printPurposes.filter(p=>policy.auto[p]&&!policy.printerAssignments[p])){
