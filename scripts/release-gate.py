@@ -23,6 +23,7 @@ with open(pathlib.Path(git('rev-parse','--git-path','v5-release-gate.lock')),'w'
   print('PASS: exact commit, source and both built artifacts verified');sys.exit(0)
  result.unlink(missing_ok=True)
  started=state()
+ run('node','--check','server.mjs')
  run('node','qa/css-contract.mjs')
  run('npm','run','build');run('node','node_modules/vite/bin/vite.js','build','--base=/v5-test/','--outDir','test-dist',env={**os.environ,'VITE_API_BASE':'/v5-test/api'})
  tested=state()
