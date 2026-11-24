@@ -1,9 +1,9 @@
-// Migration: add tenant_id to all business tables and backfill existing rows.
-// Safe to re-run. Skips tables that do not exist or have constraints that block the update.
+// Prepare tenant columns without assigning historical sales to the current process tenant.
+// Historical attribution requires verified ownership of the rows.
 export function migrateTenantScoping(db) {
   const tenantId = process.env.PLATFORM_TENANT_ID;
   if (!tenantId) {
-    console.warn('PLATFORM_TENANT_ID not set; skipping tenant_id backfill');
+    console.warn('PLATFORM_TENANT_ID not set; skipping tenant schema installation');
     return;
   }
 
@@ -29,7 +29,6 @@ export function migrateTenantScoping(db) {
       if (!cols.some(c => c.name === 'tenant_id')) {
         db.exec(`ALTER TABLE ${table} ADD COLUMN tenant_id TEXT`);
       }
-      db.prepare(`UPDATE ${table} SET tenant_id = ? WHERE tenant_id IS NULL`).run(tenantId);
       try {
         db.exec(`CREATE INDEX IF NOT EXISTS ${table}_tenant_id ON ${table}(tenant_id)`);
       } catch {}

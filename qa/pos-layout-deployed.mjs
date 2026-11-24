@@ -11,7 +11,7 @@ try{
  await page.getByRole('heading',{name:'Sign in',exact:true}).waitFor();
  await page.locator('.auth-logo img').evaluate(img=>img.decode());
  assert.match(await page.locator('.auth-logo img').getAttribute('src'),/customli-login-logo\.svg$/,'Official login logo is required');
- assert.equal(await page.getByLabel(/Email/).count(),1);assert.equal(await page.locator('input[type=\"password\"]').count(),1);
+ assert.equal(await page.getByLabel(/username or email|email or username/i).count(),1);assert.equal(await page.locator('input[type=\"password\"]').count(),1);
  assert.equal(await page.getByRole('button',{name:'Show password'}).count(),1);
  assert.equal(await page.getByRole('button',{name:'Forgot password?'}).count(),1);
  assert.equal(await page.getByRole('button').filter({hasText:/Google|Apple/}).count(),0);
