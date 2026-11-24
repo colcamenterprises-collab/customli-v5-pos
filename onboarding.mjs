@@ -102,7 +102,7 @@ function updateBlankReceiptTemplates(db, profile, actor) {
     const modified = { ...config, businessName: profile.restaurantName, address: profile.restaurantAddress,
       timezone: profile.timezone };
     if (JSON.stringify(modified) === JSON.stringify(config)) continue;
-    db.prepare('INSERT INTO receipt_template_versions VALUES(?,?,?,?,?,?)').run(row.id, 2, loc, JSON.stringify(modified), actor, new Date().toISOString());
+    db.prepare('INSERT INTO receipt_template_versions(template_id,version,location_id,config,actor_id,created_at) VALUES(?,?,?,?,?,?)').run(row.id, 2, loc, JSON.stringify(modified), actor, new Date().toISOString());
     db.prepare('UPDATE receipt_templates SET version=2 WHERE id=? AND version=1').run(row.id);
     updated++;
   }

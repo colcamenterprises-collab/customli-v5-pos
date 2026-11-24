@@ -8,7 +8,7 @@ const read=file=>readFileSync(path.join(root,file),'utf8');
 test('upgrade retains package identity and universal branding',()=>{
  assert.match(read('android-v5/app/build.gradle'),/applicationId "io.customli.v5pos"/);
  assert.match(read('android-v5/app/src/main/res/values/strings.xml'),/<string name="app_name">Customli<\/string>/);
- assert.match(read('android-v5/app/build.gradle'),/versionCode 10017/);
+ assert.match(read('android-v5/app/build.gradle'),/versionCode 10018/);
 });
 test('credentials use authenticated encryption and backups are disabled',()=>{
  const native=read('android-v5/app/src/main/java/io/customli/pos/DeviceIdentityPlugin.java');
@@ -29,7 +29,7 @@ test('all three modes ship local assets and native transport bridge',()=>{
 test('native KDS never persists its credential in localStorage or shows code pairing',()=>{
  const kds=read('android-dist/kds/app.js');assert.doesNotMatch(kds,/localStorage\.(?:getItem|setItem|removeItem)\(tokenKey/);
  assert.doesNotMatch(kds,/Enter the eight-digit code/);assert.match(kds,/sessionStorage.getItem\(tokenKey\)/);
- assert.match(kds,/https:\/\/customli\.io\/v5-kds/);
+ assert.ok(kds.includes('https://customli.io/'+(process.env.CUSTOMLI_ANDROID_ENV==='test'?'v5-kds-test':'v5-kds')));
  assert.doesNotMatch(kds,/navigator.serviceWorker.register/);
 });
 test('offline authorization expires and online revocation closes mode',()=>{

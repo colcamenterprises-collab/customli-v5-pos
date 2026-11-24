@@ -55,7 +55,7 @@ export function migratePrint(db){db.exec(`
  CREATE TRIGGER IF NOT EXISTS template_version_immutable BEFORE UPDATE ON receipt_template_versions BEGIN SELECT RAISE(ABORT,'Template version is immutable'); END;
  `);
  if(!db.prepare('SELECT id FROM print_location').get())db.prepare('INSERT INTO print_location VALUES(?)').run(randomUUID());
- const loc=location(db);for(const purpose of purposes)if(!db.prepare('SELECT id FROM receipt_templates WHERE location_id=? AND purpose=?').get(loc,purpose)){const id=randomUUID(),t=defaults(purpose);db.prepare('INSERT INTO receipt_templates(id,location_id,purpose,name,version) VALUES(?,?,?,?,1)').run(id,loc,purpose,t.name);db.prepare('INSERT INTO receipt_template_versions VALUES(?,?,?,?,?,?)').run(id,1,loc,JSON.stringify(t),'system',now());}
+ const loc=location(db);for(const purpose of purposes)if(!db.prepare('SELECT id FROM receipt_templates WHERE location_id=? AND purpose=?').get(loc,purpose)){const id=randomUUID(),t=defaults(purpose);db.prepare('INSERT INTO receipt_templates(id,location_id,purpose,name,version) VALUES(?,?,?,?,1)').run(id,loc,purpose,t.name);db.prepare('INSERT INTO receipt_template_versions(template_id,version,location_id,config,actor_id,created_at) VALUES(?,?,?,?,?,?)').run(id,1,loc,JSON.stringify(t),'system',now());}
 }
 export const location=db=>db.prepare('SELECT id FROM print_location').get().id;
 export function audit(db,loc,actor,action,details={},job=null){db.prepare('INSERT INTO print_events(location_id,job_id,actor_id,action,details,created_at) VALUES(?,?,?,?,?,?)').run(loc,job,actor,action,JSON.stringify(details),now());}
@@ -92,7 +92,12 @@ export function createDocuments(order,template,packing,meta={}){
 }
 export function enqueuePrint(db,order,event='sale.completed',actor='system',eventId=''){const loc=location(db),packing=resolvePacking(db,order),key=[loc,order.id,packing.revision,event,eventId].join(':');
  const existing=db.prepare('SELECT id FROM print_batches WHERE event_key=?').get(key);if(existing)return existing.id;
- const batchId=randomUUID();db.prepare('INSERT INTO print_batches VALUES(?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now());
+ const batchId=randomUUID();const tenantId=process.env.PLATFORM_TENANT_ID;
+ if(tenantId){
+  db.prepare('INSERT INTO print_batches(id,location_id,order_id,revision,event_key,created_at,tenant_id) VALUES(?,?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now(),tenantId);
+ }else{
+  db.prepare('INSERT INTO print_batches(id,location_id,order_id,revision,event_key,created_at) VALUES(?,?,?,?,?,?)').run(batchId,loc,order.id,packing.revision,key,now());
+ }
  const all=templates(db,loc),policy=readPrintPolicy(db,loc),savedRoutes=db.prepare('SELECT * FROM printer_routes WHERE location_id=? AND trigger=? AND active=1').all(loc,event),automatic=event==='sale.completed',configuredRoutes=automatic?printPurposes.filter(p=>policy.auto[p]&&policy.printerAssignments[p]).map(p=>({printer_id:policy.printerAssignments[p],template_id:all.find(t=>t.purpose===p)?.id,filters:'{}',active:1})).filter(r=>r.template_id):[],routes=[...configuredRoutes,...savedRoutes.filter(r=>!automatic||!printPurposes.includes(all.find(t=>t.id===r.template_id)?.purpose)||policy.auto[all.find(t=>t.id===r.template_id)?.purpose])],seen=new Set();
  if(automatic&&db.prepare('SELECT 1 FROM native_print_owner WHERE location_id=?').get(loc)){
   for(const purpose of printPurposes.filter(p=>policy.auto[p]&&!policy.printerAssignments[p])){

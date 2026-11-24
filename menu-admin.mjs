@@ -99,7 +99,7 @@ export function handleMenuAdmin({db,p,method,b,user,res,seedProductPrices}){
     db.exec('BEGIN IMMEDIATE');
     try{
      db.prepare('UPDATE categories SET active=0 WHERE id=?').run(id);
-     db.prepare('INSERT INTO menu_archive_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,'category',id,'retired',new Date().toISOString());
+     db.prepare('INSERT INTO menu_archive_audit(id,actor_id,entity_type,entity_id,action,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,'category',id,'retired',new Date().toISOString());
      db.exec('COMMIT');
     }catch(e){db.exec('ROLLBACK');throw e;}
     out(res,200,{ok:true,archived:true});return true;
@@ -125,7 +125,7 @@ export function handleMenuAdmin({db,p,method,b,user,res,seedProductPrices}){
    db.exec('BEGIN IMMEDIATE');
    try{
     db.prepare('UPDATE products SET active=0 WHERE id=?').run(id);
-    db.prepare('INSERT INTO menu_archive_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,'product',id,'retired',new Date().toISOString());
+    db.prepare('INSERT INTO menu_archive_audit(id,actor_id,entity_type,entity_id,action,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,'product',id,'retired',new Date().toISOString());
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
    out(res,200,{ok:true,archived:true});return true;

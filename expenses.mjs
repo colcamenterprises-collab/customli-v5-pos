@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS business_expenses(
  payment_method TEXT NOT NULL,classification TEXT NOT NULL DEFAULT 'business'
  CHECK(classification IN('business','personal')),source TEXT NOT NULL CHECK(source IN('manual','bank')),
  bank_transaction_id TEXT UNIQUE,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
- created_by TEXT NOT NULL,updated_by TEXT NOT NULL
+ created_by TEXT NOT NULL,updated_by TEXT NOT NULL,tenant_id TEXT
 );
 CREATE INDEX IF NOT EXISTS expense_date_idx ON business_expenses(receipt_date,classification);
 CREATE TABLE IF NOT EXISTS expense_bank_batches(
@@ -70,7 +70,12 @@ CREATE TRIGGER IF NOT EXISTS expense_audit_no_update BEFORE UPDATE ON expense_au
  BEGIN SELECT RAISE(ABORT,'Expense audit records are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS expense_audit_no_delete BEFORE DELETE ON expense_audit
  BEGIN SELECT RAISE(ABORT,'Expense audit records are immutable'); END;`);
-export function migrateExpenses(db){ensureTables(db);}
+export function migrateExpenses(db){
+ ensureTables(db);
+ if(!db.prepare('PRAGMA table_info(business_expenses)').all().some(c=>c.name==='tenant_id')){
+  db.exec('ALTER TABLE business_expenses ADD COLUMN tenant_id TEXT');
+ }
+}
 function suggestions(db,description){
  const v=text(description,250).toLowerCase();
  const rules=db.prepare('SELECT match_text,supplier,category,purpose FROM expense_supplier_rules ORDER BY length(match_text) DESC').all();
@@ -134,7 +139,7 @@ export function handleExpenses({db,p,url,method,b,user,res,send}) {
   if(!supplier||!description||!isoDate(date)||!amount||!expenseMethods.includes(payment))
    fail(400,'Enter receipt date, supplier, purpose, positive amount and payment method.');
   const id=randomUUID(),now=new Date().toISOString();
-  const tenantId=user.tenantId||process.env.PLATFORM_TENANT_ID;
+  const tenantId=user.tenantId||process.env.PLATFORM_TENANT_ID||null;
   db.exec('BEGIN IMMEDIATE');
   try{
    db.prepare(`INSERT INTO business_expenses(id,receipt_date,supplier,category,description,amount_minor,payment_method,classification,source,bank_transaction_id,created_at,updated_at,created_by,updated_by,tenant_id)
@@ -250,7 +255,7 @@ export function handleExpenses({db,p,url,method,b,user,res,send}) {
    if(matches.length)fail(409,'An expense with the same amount and nearby date was already entered manually. Review it before recording another.');
   }
   const expenseId=choice==='business'?randomUUID():null;
-  const tenantId=user.tenantId||process.env.PLATFORM_TENANT_ID;
+  const tenantId=user.tenantId||process.env.PLATFORM_TENANT_ID||null;
   db.exec('BEGIN IMMEDIATE');
   try{
    if(expenseId)db.prepare(`INSERT INTO business_expenses(id,receipt_date,supplier,category,description,amount_minor,payment_method,classification,source,bank_transaction_id,created_at,updated_at,created_by,updated_by,tenant_id)

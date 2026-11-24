@@ -8,3 +8,5 @@ test-dist/
 qa/release-results/
 
 android-dist/
+
+android-v5/app/src/main/assets/customli-environment.txt
