@@ -55,7 +55,7 @@ export function migratePrint(db){db.exec(`
  CREATE TRIGGER IF NOT EXISTS template_version_immutable BEFORE UPDATE ON receipt_template_versions BEGIN SELECT RAISE(ABORT,'Template version is immutable'); END;
  `);
  if(!db.prepare('SELECT id FROM print_location').get())db.prepare('INSERT INTO print_location VALUES(?)').run(randomUUID());
- const loc=location(db);for(const purpose of purposes)if(!db.prepare('SELECT id FROM receipt_templates WHERE location_id=? AND purpose=?').get(loc,purpose)){const id=randomUUID(),t=defaults(purpose);db.prepare('INSERT INTO receipt_templates(id,location_id,purpose,name,version) VALUES(?,?,?,?,1)').run(id,loc,purpose,t.name);db.prepare('INSERT INTO receipt_template_versions VALUES(?,?,?,?,?,?)').run(id,1,loc,JSON.stringify(t),'system',now());}
+ const loc=location(db);for(const purpose of purposes)if(!db.prepare('SELECT id FROM receipt_templates WHERE location_id=? AND purpose=?').get(loc,purpose)){const id=randomUUID(),t=defaults(purpose);db.prepare('INSERT INTO receipt_templates(id,location_id,purpose,name,version) VALUES(?,?,?,?,1)').run(id,loc,purpose,t.name);db.prepare('INSERT INTO receipt_template_versions(template_id,version,location_id,config,actor_id,created_at) VALUES(?,?,?,?,?,?)').run(id,1,loc,JSON.stringify(t),'system',now());}
 }
 export const location=db=>db.prepare('SELECT id FROM print_location').get().id;
 export function audit(db,loc,actor,action,details={},job=null){db.prepare('INSERT INTO print_events(location_id,job_id,actor_id,action,details,created_at) VALUES(?,?,?,?,?,?)').run(loc,job,actor,action,JSON.stringify(details),now());}

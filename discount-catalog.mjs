@@ -22,7 +22,7 @@ export function catalogRoute({db,p,method,b,user,res,send,bad}){
   if(name.length<2||name.length>70||!['percent','fixed'].includes(kind)||!Number.isSafeInteger(value)||value<=0||(kind==='percent'&&value>10000))bad(400,'Enter a valid name and discount value');
   const id=randomUUID(),now=new Date().toISOString();
   db.prepare('INSERT INTO discount_catalog(id,name,kind,value,access_mode,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,name,kind,value,access_mode,user.id,now,now);
-  db.prepare('INSERT INTO discount_catalog_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),id,user.id,'create',JSON.stringify({name,kind,value,access_mode}),now);
+  db.prepare('INSERT INTO discount_catalog_audit(id,discount_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),id,user.id,'create',JSON.stringify({name,kind,value,access_mode}),now);
   return send(res,201,{id,name,kind,value,active:1,access_mode});
  }
  const match=p.match(/^\/discount-catalog\/([\w-]+)$/);
@@ -34,7 +34,7 @@ export function catalogRoute({db,p,method,b,user,res,send,bad}){
   if(name.length<2||name.length>70||!['percent','fixed'].includes(kind)||!Number.isSafeInteger(value)||value<=0||(kind==='percent'&&value>10000))bad(400,'Enter a valid name and discount value');
   const now=new Date().toISOString();
   db.prepare('UPDATE discount_catalog SET name=?,kind=?,value=?,active=?,access_mode=?,updated_at=? WHERE id=?').run(name,kind,value,active,access_mode,now,id);
-  db.prepare('INSERT INTO discount_catalog_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),id,user.id,'update',JSON.stringify({previous:existing,current:{name,kind,value,active,access_mode}}),now);
+  db.prepare('INSERT INTO discount_catalog_audit(id,discount_id,actor_id,action,detail,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),id,user.id,'update',JSON.stringify({previous:existing,current:{name,kind,value,active,access_mode}}),now);
   return send(res,200,{id,name,kind,value,active,access_mode});
  }
  return null;
