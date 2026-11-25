@@ -30,9 +30,12 @@ db.prepare('INSERT INTO discounts(id,order_id,amount,reason,created_at,staff_id,
 db.prepare('INSERT INTO payment_corrections(id,order_id,previous_method,new_method,reason,created_at,approved_by) VALUES(?,?,?,?,?,?,?)').run(randomUUID(),o2,'Cash','QR','Correction','2026-10-27T12:46:00.000Z','manager');
 db.prepare('INSERT INTO shift_cash_movements(id,shift_id,direction,amount,description,place,recorded_by,created_at) VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),shift,'in',300,'Cash float','Till',cashier,'2026-10-27T14:00:00.000Z');
 db.prepare('INSERT INTO shift_cash_movements(id,shift_id,direction,amount,description,place,recorded_by,created_at) VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),shift,'out',100,'Supplies','Shop',cashier,'2026-10-27T14:01:00.000Z');
-function call(role,type='overview',suffix='',range='period=custom&from=2026-10-27&to=2026-10-27') {let out='';const res={writeHead(status,headers){this.status=status;this.headers=headers},end(value){out=String(value)}};handleReporting(new URL('http://local/v5-test/api/reports'+suffix+'?type='+type+'&'+range), 'GET',res,db,{role});return {status:res.status,headers:res.headers,body:out};}
+function call(role,type='overview',suffix='',range='period=custom&from=2026-10-27&to=2026-10-27',permissions) {let out='';const res={writeHead(status,headers){this.status=status;this.headers=headers},end(value){out=String(value)}};handleReporting(new URL('http://local/v5-test/api/reports'+suffix+'?type='+type+'&'+range), 'GET',res,db,{role,permissions});return {status:res.status,headers:res.headers,body:out};}
 let r=call('Owner');assert.equal(r.status,200);let d=JSON.parse(r.body).data;assert.deepEqual([d.gross_sales,d.discounts,d.refunds,d.net_sales,d.total_orders,d.average_order_value,d.cash_sales,d.qr_sales],[15000,1000,4500,9500,2,4750,9000,5000]);
-r=call('Manager');assert.equal(r.status,403);assert.match(r.body,/Owner access/);
+r=call('Manager');assert.equal(r.status,403);assert.match(r.body,/permission/);
+r=call('Manager','overview','','period=custom&from=2026-10-27&to=2026-10-27',new Set(['reporting.sales']));assert.equal(r.status,200,'Manager with sales grant can view Overview');
+r=call('Manager','refunds','','period=custom&from=2026-10-27&to=2026-10-27',new Set(['reporting.sales']));assert.equal(r.status,403,'sales grant does not expose Refunds report');
+r=call('Manager','refunds','','period=custom&from=2026-10-27&to=2026-10-27',new Set(['reporting.refunds']));assert.equal(r.status,200,'Manager with refunds grant can view Refunds');
 r=call('Owner','items');d=JSON.parse(r.body).data;assert.equal(d[0].gross_quantity,2);assert.equal(d[0].refunded_quantity,1);assert.equal(d[0].net_quantity,1);assert.equal(d[0].discount_allocated,1000);assert.equal(d[0].net_revenue,4500);
 r=call('Owner','refunds');assert.equal(JSON.parse(r.body).data[0].payment_method,'Cash');
 r=call('Owner','discounts');assert.equal(JSON.parse(r.body).data[0].amount,1000);
@@ -46,5 +49,5 @@ const wholeShifts=JSON.parse(call('Owner','overview','',exact+'&basis=shift').bo
 assert.equal(wholeShifts.total_orders,0,'Whole-shift range includes only shifts opening within selected window');
 assert.equal(call('Owner','overview','','period=custom&fromTime=2026-10-27T22%3A00&toTime=2026-10-27T19%3A00').status,400);
 console.log('PASS exact time boundaries and shift-opening versus transaction-time filtering');
-console.log('reporting calculations, date filters, Owner-only access and CSV export: PASS');
+console.log('reporting calculations, date filters, granular Manager grants, and CSV export: PASS');
 db.close();

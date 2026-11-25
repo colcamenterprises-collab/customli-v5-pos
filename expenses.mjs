@@ -107,7 +107,7 @@ function enrichBank(db,rows) {
 const output=(res,send,status,data)=>send(res,status,data);
 export function handleExpenses({db,p,url,method,b,user,res,send}) {
  if(!p.startsWith('/expenses'))return null;
- if(user.role!=='Owner')fail(403,'Only an Owner can review business expenses.');
+ if(user.permissions instanceof Set ? !user.permissions.has('operations.expenses') : user.role!=='Owner')fail(403,'You do not have permission to review business expenses.');
  const read=method==='GET',write=method==='POST',patch=method==='PATCH';
  if(p==='/expenses/categories'&&read)return output(res,send,200,{categories:expenseCategories,paymentMethods:expenseMethods});
  if(p==='/expenses/suggest'&&read)return output(res,send,200,suggestions(db,url.searchParams.get('supplier')));

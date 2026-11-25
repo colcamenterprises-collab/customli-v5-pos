@@ -36,8 +36,8 @@ test('offline authorization expires and online revocation closes mode',()=>{
  const shell=read('universal.jsx');assert.match(shell,/request\(AUTH\+'\/me'/);assert.match(shell,/error.status===401\|\|error.status===403/);
  assert.match(shell,/deviceStore\(\)\?\.clear\(\)/);assert.match(shell,/customli-device-id/);assert.match(shell,/customli-location-id/);
 });
-test('discovery metadata is untrusted and intersected with authorized same-location peers',()=>{
+test('registered device assignment is location and mode scoped',()=>{
  const native=read('android-v5/app/src/main/java/io/customli/pos/DeviceDiscoveryPlugin.java');
  assert.match(native,/candidate.put\("authenticated", false\)/);
- const shell=read('universal.jsx');assert.doesNotMatch(shell,/devices\/register/);assert.match(shell,/locations.find\(x=>x.id===locationId\)/);
+ const shell=read('universal.jsx');assert.match(shell,/devices\/register/);assert.match(shell,/devices\/self/);assert.match(shell,/installationId:installationId\.current/);assert.match(shell,/locations.find\(x=>x.id===locationId\)/);
 });

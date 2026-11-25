@@ -9,7 +9,7 @@ CREATE TABLE shifts(id TEXT PRIMARY KEY,opened_at TEXT,closed_at TEXT);
 CREATE TABLE shift_cash_movements(id TEXT PRIMARY KEY,shift_id TEXT REFERENCES shifts(id),direction TEXT,amount INTEGER,description TEXT,place TEXT,recorded_by TEXT,created_at TEXT);
 `);
 migrateExpenses(db);
-const owner={id:'owner',role:'Owner'},cashier={id:'cashier',role:'Cashier'};
+const owner={id:'owner',role:'Owner'},cashier={id:'cashier',role:'Cashier'},managerAllowed={id:'manager',role:'Manager',permissions:new Set(['operations.expenses'])},managerDenied={id:'manager-denied',role:'Manager',permissions:new Set()};
 const call=(route,method='GET',b,actor=owner)=>{
  let status,data;const res={writeHead(code){status=code},end(str){data=JSON.parse(str)}},
  send=(r,code,body)=>{r.writeHead(code);r.end(JSON.stringify(body));};
@@ -18,6 +18,8 @@ const call=(route,method='GET',b,actor=owner)=>{
 };
 const range='?from=2026-10-01&to=2026-11-30';
 assert.equal(call('/expenses/categories','GET',null,cashier).status,403);
+assert.equal(call('/expenses/categories','GET',null,managerAllowed).status,200,'Manager with explicit expenses grant must be allowed');
+assert.equal(call('/expenses/categories','GET',null,managerDenied).status,403,'Manager without expenses grant must remain denied');
 assert(expenseCategories.includes('Packaging & Disposables'));
 const shift=randomUUID(),cashOut=randomUUID(),transfer=randomUUID();
 db.prepare('INSERT INTO shifts VALUES(?,?,?)').run(shift,'2026-10-31T12:00:00Z','2026-10-31T23:00:00Z');
