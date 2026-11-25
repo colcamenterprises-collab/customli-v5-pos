@@ -9,7 +9,7 @@ const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
 const AUTH=import.meta.env.VITE_AUTH_API_BASE||ORIGIN+'/v5-auth/api/auth';
 const POS_API=import.meta.env.VITE_API_BASE||ORIGIN+'/v5/api';
 const environment=import.meta.env.VITE_ANDROID_ENV||'production';
-const VERSION='1.2.6';
+const VERSION='1.2.7';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){

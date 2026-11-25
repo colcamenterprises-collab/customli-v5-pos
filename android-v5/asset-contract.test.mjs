@@ -8,7 +8,9 @@ const read=file=>readFileSync(path.join(root,file),'utf8');
 test('upgrade retains package identity and universal branding',()=>{
  assert.match(read('android-v5/app/build.gradle'),/applicationId "io.customli.v5pos"/);
  assert.match(read('android-v5/app/src/main/res/values/strings.xml'),/<string name="app_name">Customli<\/string>/);
- assert.match(read('android-v5/app/build.gradle'),/versionCode 10018/);
+ assert.match(read('android-v5/app/build.gradle'),/versionCode 10019/);
+ assert.match(read('android-v5/app/build.gradle'),/versionName \"1.2.7\"/);
+ assert.match(read('universal.jsx'),/const VERSION='1.2.7'/);
 });
 test('credentials use authenticated encryption and backups are disabled',()=>{
  const native=read('android-v5/app/src/main/java/io/customli/pos/DeviceIdentityPlugin.java');
