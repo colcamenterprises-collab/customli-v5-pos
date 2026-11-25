@@ -17,7 +17,7 @@ CREATE TABLE shift_cash_movements(id TEXT PRIMARY KEY,shift_id TEXT,direction TE
 CREATE TABLE modifier_options(id TEXT PRIMARY KEY,group_id TEXT,name TEXT);
 CREATE TABLE order_item_modifiers(id TEXT PRIMARY KEY,order_item_id TEXT,option_id TEXT,option_name TEXT,quantity INTEGER);
 `);
-migrateFoodModel(db);migrateMenuAdmin(db);migrateSaleCosts(db);
+migrateFoodModel(db);migrateMenuAdmin(db);migrateSaleCosts(db);db.exec('CREATE TABLE recipe_menu_links(recipe_id TEXT NOT NULL,product_id TEXT NOT NULL,PRIMARY KEY(recipe_id,product_id))');
 const owner={id:randomUUID(),role:'Owner'},manager={id:randomUUID(),role:'Manager'},cashier={id:randomUUID(),role:'Cashier'};
 const call=(p,method,b={},user=owner)=>{
  let body='',status;
@@ -40,6 +40,7 @@ db.prepare('INSERT INTO food_recipes VALUES(?,?,?,?,?,?,?,?,?)').run(recipe,'Dou
 db.prepare('INSERT INTO food_recipe_components VALUES(?,?,?)').run(recipe,ing,180);
 assert.equal(call('/products/'+product.id,'PATCH',{recipeId:recipe}).status,200);
 assert.equal(db.prepare('SELECT product_id FROM food_recipes WHERE id=?').get(recipe).product_id,product.id);
+const product2=randomUUID();assert.equal(call('/products','POST',{name:'Double second listing',category:'Burgers',price:220}).status,201);const createdProducts=db.prepare('SELECT id FROM products ORDER BY rowid').all();const second=createdProducts.at(-1).id;assert.equal(call('/products/'+second,'PATCH',{name:'Double second listing',category:'Burgers',price:220,recipeId:recipe}).status,200,'One approved recipe can link to multiple menu items');assert.deepEqual(db.prepare('SELECT product_id FROM recipe_menu_links WHERE recipe_id=? ORDER BY product_id').all(recipe).map(x=>x.product_id).sort(),[product.id,second].sort());assert.equal(call('/products/'+second,'PATCH',{name:'Double second listing',category:'Burgers',price:220,recipeId:recipe}).status,200,'Saving existing multi-link does not fail or remove links');assert.equal(db.prepare('SELECT COUNT(*) n FROM recipe_menu_links WHERE recipe_id=?').get(recipe).n,2);
 const shift=randomUUID(),order=randomUUID(),line=randomUUID();
 db.prepare('INSERT INTO shifts VALUES(?,?,?,?,?,?,?)').run(shift,'2026-10-31T10:00:00Z',null,0,null,null,null);
 db.prepare("INSERT INTO orders(id,shift_id,status,subtotal,total,discount_total,payment_method) VALUES(?,?,?,?,?,?,?)").run(order,shift,'paid',22000,22000,0,'Cash');
@@ -71,7 +72,7 @@ const res={writeHead(s){status=s},end(){}};
 handleShiftAnalytics(new URL('http://localhost/v5/api/shift-analytics'), 'GET',res,db,cashier);assert.equal(status,403);
 handleShiftAnalytics(new URL('http://localhost/v5/api/shift-analytics'), 'GET',res,db,manager);assert.equal(status,200);
 assert.equal(call('/products/'+product.id,'DELETE').status,200);
-assert.equal(call('/categories/'+cat.id,'DELETE').status,200);
+assert.equal(call('/products/'+second,'DELETE').status,200);assert.equal(call('/categories/'+cat.id,'DELETE').status,200);
 assert.equal(db.prepare('SELECT active FROM products WHERE id=?').get(product.id).active,0,'Historical product retained');
 assert.equal(db.prepare('SELECT COUNT(*) n FROM order_items WHERE product_id=?').get(product.id).n,3,'Sales history retained');
 console.log('PASS menu catalog, archive safety, recipe link, immutable COGS snapshot, modifier missing-cost guard, shift roles');

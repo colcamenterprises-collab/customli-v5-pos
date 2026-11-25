@@ -52,7 +52,6 @@ export function handleProductConfiguration({db,p,method,b,user,res}){
   }
   const recipeId=b.recipeId;
   if(recipeId&&(!idOk(recipeId)||!db.prepare('SELECT id FROM food_recipes WHERE id=?').get(recipeId)))fail(400,'Select a valid recipe.');
-  if(recipeId){const linked=db.prepare('SELECT product_id FROM food_recipes WHERE id=?').get(recipeId)?.product_id;const linkedByJoin=db.prepare('SELECT product_id FROM recipe_menu_links WHERE recipe_id=? AND product_id<>? LIMIT 1').get(recipeId,id)?.product_id;if((linked&&linked!==id)||(linkedByJoin&&linkedByJoin!==id))fail(409,'That recipe is linked to another item.');}
   db.exec('BEGIN IMMEDIATE');
   try{
    db.prepare('UPDATE products SET name=?,category=?,price=?,image=?,description=?,available=? WHERE id=?').run(name,category,price,image,description,available,id);
@@ -74,7 +73,7 @@ export function handleProductConfiguration({db,p,method,b,user,res}){
      db.prepare('INSERT OR IGNORE INTO product_modifier_groups(product_id,group_id) VALUES(?,?)').run(id,gid);
     }else if(gid){db.prepare('DELETE FROM product_modifier_groups WHERE product_id=? AND group_id=?').run(id,gid);db.prepare('UPDATE modifier_groups SET active=0 WHERE id=?').run(gid);}
    }
-   if(recipeId!==undefined){db.prepare('UPDATE food_recipes SET product_id=NULL,updated_at=? WHERE product_id=?').run(now,id);db.prepare('DELETE FROM recipe_menu_links WHERE product_id=?').run(id);if(recipeId){db.prepare('UPDATE food_recipes SET product_id=NULL,updated_at=? WHERE product_id=? AND id<>?').run(now,id,recipeId);db.prepare('DELETE FROM recipe_menu_links WHERE recipe_id=?').run(recipeId);db.prepare('UPDATE food_recipes SET product_id=?,updated_at=? WHERE id=?').run(id,now,recipeId);db.prepare('INSERT INTO recipe_menu_links(recipe_id,product_id) VALUES(?,?)').run(recipeId,id);}}
+   if(recipeId!==undefined){db.prepare('UPDATE food_recipes SET product_id=NULL,updated_at=? WHERE product_id=?').run(now,id);db.prepare('DELETE FROM recipe_menu_links WHERE product_id=?').run(id);if(recipeId){db.prepare('UPDATE food_recipes SET product_id=COALESCE(product_id,?),updated_at=? WHERE id=?').run(id,now,recipeId);db.prepare('INSERT OR IGNORE INTO recipe_menu_links(recipe_id,product_id) VALUES(?,?)').run(recipeId,id);}}
    db.exec('COMMIT');
   }catch(e){db.exec('ROLLBACK');throw e}
   out(res,200,{ok:true,id});return true;
@@ -138,8 +137,6 @@ export function handleMenuAdmin({db,p,method,b,user,res,seedProductPrices}){
   if(recipeId && !idOk(recipeId))fail(400,'Select an existing recipe.');
   if(recipeId){
    if(!db.prepare('SELECT id FROM food_recipes WHERE id=?').get(recipeId))fail(404,'Recipe not found.');
-   const linked=db.prepare('SELECT product_id FROM food_recipes WHERE id=?').get(recipeId)?.product_id;
-   if(linked&&linked!==id)fail(409,'That recipe is already assigned to another item.');
   }
   const productId=method==='POST'?randomUUID():id;
   db.exec('BEGIN IMMEDIATE');
@@ -147,8 +144,10 @@ export function handleMenuAdmin({db,p,method,b,user,res,seedProductPrices}){
    if(method==='POST')db.prepare('INSERT INTO products(id,name,category,price,image,description) VALUES(?,?,?,?,?,?)').run(productId,name,cat,price,image,desc);
    else db.prepare('UPDATE products SET name=?,category=?,price=?,image=?,description=? WHERE id=?').run(name,cat,price,image,desc,id);
    if(recipeId!==undefined){
-    db.prepare('UPDATE food_recipes SET product_id=NULL,updated_at=? WHERE product_id=?').run(new Date().toISOString(),productId);
-    if(recipeId)db.prepare('UPDATE food_recipes SET product_id=?,updated_at=? WHERE id=?').run(productId,new Date().toISOString(),recipeId);
+    const now=new Date().toISOString();
+    db.prepare('UPDATE food_recipes SET product_id=NULL,updated_at=? WHERE product_id=?').run(now,productId);
+    db.prepare('DELETE FROM recipe_menu_links WHERE product_id=?').run(productId);
+    if(recipeId){db.prepare('UPDATE food_recipes SET product_id=COALESCE(product_id,?),updated_at=? WHERE id=?').run(productId,now,recipeId);db.prepare('INSERT OR IGNORE INTO recipe_menu_links(recipe_id,product_id) VALUES(?,?)').run(recipeId,productId);}
    }
    seedProductPrices(db,productId,price);
    db.exec('COMMIT');
