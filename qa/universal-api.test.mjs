@@ -9,7 +9,7 @@ const dir=mkdtempSync(tmpdir()+'/customli-universal-'),tokens=Object.fromEntries
 let staffPermissions;
 const auth=http.createServer(async(req,res)=>{let raw='';for await(const c of req)raw+=c;const b=JSON.parse(raw),kind=Object.keys(tokens).find(k=>tokens[k]===b.token);res.setHeader('Content-Type','application/json');if(!kind||revoked){res.statusCode=401;return res.end('{}')}if(kind.startsWith('account')){
  const tenantId=kind==='accountOtherTenant'?'other':'tenant';
- return res.end(JSON.stringify({id:'account-owner',memberships:[{tenantId,role:'Owner'}],locations:kind==='accountNoLocation'?[]:[{id:'restaurant',tenantId}],...(staffPermissions?{staffAccess:[{tenantId,locations:staffPermissions.locations,permissions:staffPermissions.permissions}]}:{})}));
+ return res.end(JSON.stringify({id:'account-owner',memberships:[{tenantId,role:staffPermissions?'Manager':'Owner'}],locations:kind==='accountNoLocation'?[]:[{id:'restaurant',tenantId}],...(staffPermissions?{staffAccess:[{tenantId,locations:staffPermissions.locations,permissions:staffPermissions.permissions}]}:{})}));
  }res.end(JSON.stringify({id:'owner',email:'owner@test.test',displayName:'QA',memberships:[{tenantId:kind==='wrongTenant'?'other':'tenant',role:'Owner'}],device:{id:kind,tenantId:kind==='wrongTenant'?'other':'tenant',locationId:kind==='wrongLocation'?'other':'restaurant',mode:kind==='cds'?'CDS':kind==='kds'?'KDS':'POS',posDeviceId:kind==='cds'?'pos':null}}))});await new Promise(r=>auth.listen(0,'127.0.0.1',r));
 const reserve=http.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
 const api=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url).pathname,env:{...process.env,PORT:String(port),V5_DATA_DIR:dir,V5_DEMO_SEED:'1',V5_API_PREFIX:'/v5/api',V5_PRINT_KDS_DB:'',PLATFORM_AUTH_INTROSPECT_URL:`http://127.0.0.1:${auth.address().port}/api/auth/introspect`,PLATFORM_AUTH_SERVICE_SECRET:'isolated-test',PLATFORM_TENANT_ID:'tenant',PLATFORM_LOCATION_ID:'restaurant'},stdio:['ignore','pipe','pipe']});let log='';api.stderr.on('data',c=>log+=c);
@@ -38,6 +38,9 @@ try{
  staffPermissions={locations:['restaurant'],permissions:['applications.pos','pos.order.create','pos.payment.process']};
  assert.equal((await call('/products','GET',null,'account','restaurant')).status,200);
  assert.equal((await call('/reports?type=overview','GET',null,'account','restaurant')).status,403);
+ staffPermissions.permissions=['applications.dashboard','reporting.sales'];
+ assert.equal((await call('/reports?type=overview','GET',null,'account','restaurant')).status,200,'Manager with saved Dashboard and sales grants can load Overview');
+ assert.equal((await call('/reports?type=refunds','GET',null,'account','restaurant')).status,403,'Manager sales grant cannot load Refunds without its grant');
  assert.equal((await call('/display/terminals','GET',null,'account','restaurant','2222222222222222','CDS')).status,403);
  assert.equal((await call('/orders','POST',{discountId:'override'},'account','restaurant')).status,403);
  staffPermissions.permissions=['applications.cds'];

@@ -68,25 +68,27 @@ function App(){
  },[printerAction,screen,saved?.device.mode]);
  const [showDeviceMenu,setShowDeviceMenu]=useState(false);
  const [launcherTab,setLauncherTab]=useState('home');
- const openDashboard=async()=>{if(staffSession){setError('Dashboard is not available for staff PIN sessions.');return;}setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openDashboard()}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
+ const openDashboard=async()=>{if(staffSession){setError('Dashboard is not available for staff PIN sessions.');return;}setError('');try{const handoff=await request(AUTH+'/browser-handoff',saved?.token||accountToken.current,{});await window.Capacitor.Plugins.ExternalNavigation.openDashboard({handoffCode:handoff.code})}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
  const openSupport=async()=>{setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openSupport()}catch(e){setError(e.message||'Could not open support in your browser.')}};
- useEffect(()=>{const handler=e=>{if(e.source!==document.querySelector('iframe')?.contentWindow||e.origin!==window.location.origin||e.data?.type!=='customli:open-dashboard')return;openDashboard()};window.addEventListener('message',handler);return()=>window.removeEventListener('message',handler)},[]);
+ useEffect(()=>{const handler=e=>{if(e.source!==document.querySelector('iframe')?.contentWindow||e.origin!==window.location.origin||e.data?.type!=='customli:open-dashboard')return;openDashboard()};window.addEventListener('message',handler);return()=>window.removeEventListener('message',handler)},[saved?.token,staffSession]);
  const accountToken=useRef(''),accountId=useRef(''),sessionExpiresAt=useRef(''),installationId=useRef('');
  const persist=async next=>{await deviceStore().save({credential:JSON.stringify(next)});setSaved(next);};
- const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);sessionStorage.setItem('customli-kds-'+environment+'-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
+ const registerDevice=async next=>{const result=await request(AUTH+'/devices/register',next.token,{installationId:installationId.current,name:next.device.name||'POS tablet',mode:next.device.mode,locationId:next.device.locationId,station:next.device.station||'Expo',posDeviceId:next.device.posDeviceId||undefined,version:VERSION});return{...next,deviceToken:result.token,device:{...result.device,installationId:installationId.current}}};
+ const open=async next=>{if(saved?.device&&['id','tenantId','locationId','mode','station'].some(key=>saved.device[key]!==next.device[key]))clearKitchenCache();await persist(next);sessionStorage.setItem('customli-platform-session',next.token);sessionStorage.setItem('v5_token',next.token);sessionStorage.setItem('customli-device-id',next.device.id);sessionStorage.setItem('customli-location-id',next.device.locationId);sessionStorage.setItem('customli-installation-id',installationId.current);sessionStorage.setItem('customli-mode',next.device.mode);if(next.deviceToken)sessionStorage.setItem('customli-device-token',next.deviceToken);sessionStorage.setItem('customli-kds-'+environment+'-device-token',next.token);sessionStorage.setItem('customli-native-scope',[next.device.tenantId,next.device.locationId,next.device.id].join(':'));setScreen('mode');};
  const revoke=async message=>{const discovery=window.Capacitor?.Plugins?.DeviceDiscovery;if(discovery)await discovery.stop().catch(()=>{});clearKitchenCache();await deviceStore()?.clear();sessionStorage.clear();setSaved(null);setScreen('login');setError(message);};
  useEffect(()=>{let active=true;(async()=>{try{
   if(!window.Capacitor?.isNativePlatform?.()||!deviceStore())throw Error('Install the Customli Android application.');
   const state=await deviceStore().read();installationId.current=state.installationId;
   if(!state.credential){if(active)setScreen('login');return;}
   const next=JSON.parse(state.credential);
-  try{const me=await request(AUTH+'/me',next.token);if(active){if(me.mustChangeCredential){await revoke('Sign in to change your temporary credential.');return}setStaffSession(me.operationalOnly===true||!dashboardAllowed(me));await open(next);}}
-  catch(error){if(!active)return;if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');
+  try{const me=await request(AUTH+'/me',next.token);if(active){if(me.mustChangeCredential){await revoke('Sign in to change your temporary credential.');return}setStaffSession(me.operationalOnly===true||!dashboardAllowed(me));const registered=next.deviceToken?next:await registerDevice(next);await open(registered);}}
+  catch(error){if(!active)return;if(error.status===401){try{if(next.deviceToken)await request(AUTH+'/devices/self',next.deviceToken);const resumable={...next,token:''};await deviceStore().save({credential:JSON.stringify(resumable)});setSaved(resumable);setScreen('login');setError('Your account session expired. Sign in again; this device setup is saved.');}catch{await revoke('This device registration has ended. Sign in again to set it up.');}}
+   else if(error.status===403)await revoke('Your session has ended. Sign in again.');
    else if(Date.parse(next.expiresAt)>Date.now()&&next.device?.mode==='POS'){await open(next);setReconnecting(true)}else{setSaved(next);setScreen('connection');setError('Connect to verify your account.');}}
  }catch(error){if(active){setError(error.message);setScreen('unavailable');}}})();return()=>{active=false};},[]);
  useEffect(()=>{if(screen!=='mode'||!saved)return;const timer=setInterval(async()=>{
   if(Date.parse(saved.expiresAt)<=Date.now()){await revoke('Your session has expired. Sign in again.');return;}
-  try{const me=await request(AUTH+'/me',saved.token);if(me.mustChangeCredential){await revoke('Sign in to change your temporary credential.');return}setStaffSession(me.operationalOnly===true||!dashboardAllowed(me));setReconnecting(false);}
+  try{const me=await request(AUTH+'/me',saved.token);if(me.mustChangeCredential){await revoke('Sign in to change your temporary credential.');return}if(saved.deviceToken)await request(AUTH+'/devices/heartbeat',saved.deviceToken,{version:VERSION});setStaffSession(me.operationalOnly===true||!dashboardAllowed(me));setReconnecting(false);}
   catch(error){if(error.status===401||error.status===403)await revoke('Your session has ended. Sign in again.');else setReconnecting(true);}
  },15000);return()=>clearInterval(timer);},[screen,saved]);
   useEffect(()=>{if(screen!=='setup'||mode!=='CDS'||!locationId||!accountToken.current)return;
@@ -110,6 +112,9 @@ function App(){
   setLocations(choices);
   setLocationId(choices.length===1?choices[0].id:'');
   if(choices.length===1)setMode(modesFor(choices[0])[0]||'POS');
+  if(saved?.accountId===login.user.id&&saved.device&&choices.some(x=>x.id===saved.device.locationId)){
+   try{if(saved.deviceToken)await request(AUTH+'/devices/self',saved.deviceToken);const resumed=await registerDevice({...saved,token:login.token,expiresAt:login.expiresAt});await open(resumed);setError('');return;}catch(error){setError('Saved tablet assignment needs review. '+error.message);}
+  }
   setError('');
   setScreen('setup');
  };
@@ -118,8 +123,8 @@ function App(){
   if(!location)throw Error('Choose a restaurant');
   if(!modesFor(location).includes(mode))throw Error('This app is not assigned to you at this restaurant');
   if(mode==='CDS'&&!devices.some(x=>x.id===posDeviceId))throw Error('Choose a point of sale');
-  const device={id:'account:'+accountId.current+':'+installationId.current,installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?posDeviceId:null};
-  await open({token:accountToken.current,accountId:accountId.current,expiresAt:sessionExpiresAt.current,device});accountToken.current='';
+  const device={installationId:installationId.current,tenantId:location.tenantId,locationId,mode,station:'Expo',posDeviceId:mode==='CDS'?posDeviceId:null};
+  const registered=await registerDevice({token:accountToken.current,accountId:accountId.current,expiresAt:sessionExpiresAt.current,device});await open(registered);accountToken.current='';
  }catch(e){setError(e.message);}finally{setBusy(false);}};
  const switchApp=async()=>{setShowDeviceMenu(false);setBusy(true);setError('');try{
   const choices=await request(AUTH+'/locations',saved.token);

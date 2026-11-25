@@ -12,7 +12,11 @@ public class ExternalNavigationPlugin extends Plugin {
   @PluginMethod
   public void openDashboard(PluginCall call) {
     try {
-      Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(getContext().getString(R.string.customli_dashboard_url)));
+      String code = call.getString("handoffCode");
+      if (code == null || !code.matches("[A-Za-z0-9_-]{40,64}")) { call.reject("A valid signed-in Dashboard handoff is required."); return; }
+      Uri dashboard = Uri.parse(getContext().getString(R.string.customli_dashboard_url));
+      Uri target = dashboard.buildUpon().appendQueryParameter("handoff", code).build();
+      Intent intent = new Intent(Intent.ACTION_VIEW, target);
       intent.addCategory(Intent.CATEGORY_BROWSABLE);
       getActivity().startActivity(intent);
       call.resolve();

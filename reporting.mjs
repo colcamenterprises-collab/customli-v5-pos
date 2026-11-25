@@ -71,12 +71,16 @@ function csv(res, filename, data) {
   res.end('\uFEFF'+body);
 }
 const reports = new Set(['overview','items','transactions','discounts','refunds','payments','shifts','channels']);
+const reportPermission = new Map([['overview','reporting.sales'],['channels','reporting.sales'],['items','reporting.items'],['transactions','reporting.transactions'],['discounts','reporting.discounts'],['refunds','reporting.refunds'],['payments','reporting.payments'],['shifts','reporting.shifts']]);
 
 export function handleReporting(url, method, res, db, user) {
   const p = url.pathname.replace(/^\/(?:v5|v5-test)\/api(?=\/|$)/,'');
   if (!p.startsWith('/reports')) return false;
-  if (!user.permissions && user.role !== 'Owner') { headers(res,403,{message:'Owner access is required to view financial reports.'}); return true; }
   if (method !== 'GET') { headers(res,405,{message:'This report is read-only.'}); return true; }
+  const type=url.searchParams.get('type')||'overview';
+  if (!reports.has(type)) { headers(res,400,{message:'Choose a report type.'}); return true; }
+  if (user.role !== 'Owner' && !(user.permissions instanceof Set && user.permissions.has(reportPermission.get(type)))) { headers(res,403,{message:'You do not have permission to view this report.'}); return true; }
+  if (p.endsWith('/export') && user.role !== 'Owner' && !user.permissions.has('reporting.export')) { headers(res,403,{message:'You do not have permission to export reports.'}); return true; }
   try {
     const filter=bounds(url.searchParams), w=whereOrders(filter), args=w.args;
     const completed = `(${w.sql}) AND o.status IN ('paid','refunded')`;
@@ -96,8 +100,6 @@ export function handleReporting(url, method, res, db, user) {
     for(const r of refunds){const key=r.payment_method||'Other';const v=paymentTotals[key]||(paymentTotals[key]={count:0,total:0});v.refunds=(v.refunds||0)+cents(r.amount)}
     const partnerTotal=Object.entries(paymentTotals).filter(([k])=>k!=='Cash'&&k!=='QR').reduce((n,[,v])=>n+v.total,0);
     const shiftRows=rows(db,`SELECT s.*, (SELECT COALESCE(SUM(o.total-o.discount_total),0) FROM orders o WHERE o.shift_id=s.id AND o.status IN ('paid','refunded') AND o.payment_method='Cash') AS cash_sales,(SELECT COALESCE(SUM(o.total-o.discount_total),0) FROM orders o WHERE o.shift_id=s.id AND o.status IN ('paid','refunded') AND o.payment_method='QR') AS qr_sales,(SELECT COALESCE(SUM(r.amount),0) FROM refunds r WHERE r.payment_method='Cash' AND r.order_id IN (SELECT id FROM orders WHERE shift_id=s.id)) AS cash_refunds,(SELECT COALESCE(SUM(r.amount),0) FROM refunds r WHERE r.payment_method='QR' AND r.order_id IN (SELECT id FROM orders WHERE shift_id=s.id)) AS qr_refunds,(SELECT COALESCE(SUM(amount),0) FROM shift_cash_movements m WHERE m.shift_id=s.id AND direction='in') AS money_in,(SELECT COALESCE(SUM(amount),0) FROM shift_cash_movements m WHERE m.shift_id=s.id AND direction='out') AS money_out,(SELECT COALESCE(SUM(CASE direction WHEN 'in' THEN amount ELSE -amount END),0) FROM shift_cash_movements m WHERE m.shift_id=s.id) AS net_movements FROM shifts s WHERE ${filter.shiftId?'s.id=?':'s.opened_at>=? AND s.opened_at<?'} ORDER BY s.opened_at DESC`,filter.shiftId?[filter.shiftId]:args).map(s=>({...s,expected_cash:Number(s.opening_cash)+Number(s.cash_sales)-Number(s.cash_refunds)+Number(s.net_movements),variance:s.closing_cash===null?null:Number(s.closing_cash)-(Number(s.opening_cash)+Number(s.cash_sales)-Number(s.cash_refunds)+Number(s.net_movements))}));
-    const type=url.searchParams.get('type')||'overview';
-    if(!reports.has(type))throw Object.assign(new Error('Choose a report type.'),{status:400});
     if(p.endsWith('/export')) {
       const map={channels:{columns:['name','orders','gross_sales','discounts','refunds','net_sales'],rows:channelSummary.map(c=>({...c,gross_sales:c.gross_sales/100,discounts:c.discounts/100,refunds:c.refunds/100,net_sales:c.net_sales/100}))},transactions:{columns:['receipt_number','created_at','shift_id','channel_id','partner_reference','partner_item_discount','partner_order_discount','status','payment_method','subtotal','discount_total','refund_total','total'],rows:orders.map(o=>({...o,subtotal:o.subtotal/100,discount_total:o.discount_total/100,partner_item_discount:(o.partner_item_discount||0)/100,partner_order_discount:(o.partner_order_discount||0)/100,refund_total:o.refund_total/100,total:(o.total-o.discount_total-o.refund_total)/100}))},
       items:{columns:['product_id','name','category','gross_quantity','refunded_quantity','net_quantity','gross_revenue','discount_allocated','refunded_value','net_revenue'],rows:itemRows.map(i=>({...i,gross_revenue:i.gross_revenue/100,discount_allocated:i.discount_allocated/100,refunded_value:i.refunded_value/100,net_revenue:i.net_revenue/100}))},
