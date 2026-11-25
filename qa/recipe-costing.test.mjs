@@ -16,6 +16,21 @@ test('purchasing costs and multiple menu links recalculate, existing sales snaps
  assert.equal(call(d,'','GET',{}, {id:'staff',role:'Cashier'}).status,403);
   assert.equal(call(d,'','GET',{}, {id:'manager',role:'Manager',permissions:new Set(['operations.recipes','operations.costing'])}).status,200);
 });
+test('recipe preparation, cooking and special instructions survive save and reload',()=>{
+ const d=db();
+ const body={name:'Chicken fillet burger',yieldQuantity:1,preparationInstructions:'Prepare the fresh vegetables.',cookingInstructions:'Cook chicken to the approved time.',specialNotes:'Use the allergen-safe station.',lines:[{manual:true,manualName:'Chicken fillet',lineType:'ingredient',quantity:100,unitUsed:'g',manualPackQuantity:1,manualPackUnit:'kg',manualPackCostMinor:19900}]};
+ const saved=call(d,'','POST',body);assert.equal(saved.status,201);
+ const id=saved.data.recipe.id;
+ assert.equal(saved.data.recipe.preparation_instructions,body.preparationInstructions);
+ assert.equal(saved.data.recipe.cooking_instructions,body.cookingInstructions);
+ assert.equal(saved.data.recipe.special_notes,body.specialNotes);
+ const reopened=call(d,'/'+id).data.recipe;
+ assert.equal(reopened.preparation_instructions,body.preparationInstructions);
+ assert.equal(reopened.cooking_instructions,body.cookingInstructions);
+ assert.equal(reopened.special_notes,body.specialNotes);
+ const changed=call(d,'/'+id,'PATCH',{...body,preparationInstructions:'Updated prep.'});
+ assert.equal(changed.status,200);assert.equal(changed.data.recipe.preparation_instructions,'Updated prep.');
+});
 test('nested import is atomic and retains historical values separately',()=>{
  const d=db();d.exec("INSERT INTO food_ingredients(id,name,base_unit,pack_quantity,pack_unit,pack_cost_minor,updated_at) VALUES('bun','Bun','each',12,'each',12000,'2026-11-19')");
  const row={name:'Meal',yieldQuantity:1,lines:[{itemId:'bun',lineType:'ingredient',quantity:1,unitUsed:'each'}],historical:{id:'73',totalCost:'9.99',version:'4',createdAt:'2025-01-01'}};
