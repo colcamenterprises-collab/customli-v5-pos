@@ -15,8 +15,8 @@ android {
         resValue "string", "customli_dashboard_url", testEnvironment ? "https://customli.io/v5-dashboard-test/" : "https://customli.io/v5-dashboard/"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10019
-        versionName "1.2.7"
+        versionCode 10020
+        versionName "1.2.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

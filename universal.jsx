@@ -9,7 +9,7 @@ const ORIGIN=import.meta.env.VITE_PLATFORM_ORIGIN||'https://customli.io';
 const AUTH=import.meta.env.VITE_AUTH_API_BASE||ORIGIN+'/v5-auth/api/auth';
 const POS_API=import.meta.env.VITE_API_BASE||ORIGIN+'/v5/api';
 const environment=import.meta.env.VITE_ANDROID_ENV||'production';
-const VERSION='1.2.7';
+const VERSION='1.2.8';
 const deviceStore=()=>window.Capacitor?.Plugins?.DeviceIdentity;
 const currency=n=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'THB'}).format(Number(n||0)/100);
 async function request(url,token='',body,device){
@@ -45,7 +45,7 @@ const modesFor=location=>Array.isArray(location?.modes)?appModes.filter(mode=>lo
 const clearKitchenCache=()=>{for(const key of Object.keys(localStorage))if(/^customli-kds-(?:production|test)-.*(?:board-cache|pending-actions|event-cursor)$/.test(key))localStorage.removeItem(key);};
 function App(){
  const [staffSession,setStaffSession]=useState(false);
- const [firstLogin,setFirstLogin]=useState(null),[newPin,setNewPin]=useState(''),[confirmPin,setConfirmPin]=useState(''),[pinError,setPinError]=useState(''),[oldPin,setOldPin]=useState('');
+ const [firstLogin,setFirstLogin]=useState(null),[newPassword,setNewPassword]=useState(''),[confirmPassword,setConfirmPassword]=useState(''),[passwordError,setPasswordError]=useState(''),[currentCredential,setCurrentCredential]=useState('');
  const [screen,setScreen]=useState('loading'),[saved,setSaved]=useState(null),[locations,setLocations]=useState([]),[locationId,setLocationId]=useState(''),[mode,setMode]=useState('POS'),[devices,setDevices]=useState([]),[posDeviceId,setPosDeviceId]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reconnecting,setReconnecting]=useState(false),[nearby,setNearby]=useState([]);
  const selectedLocation=locations.find(x=>x.id===locationId);
  const availableModes=selectedLocation?modesFor(selectedLocation):appModes;
@@ -68,7 +68,7 @@ function App(){
  },[printerAction,screen,saved?.device.mode]);
  const [showDeviceMenu,setShowDeviceMenu]=useState(false);
  const [launcherTab,setLauncherTab]=useState('home');
- const openDashboard=async()=>{if(staffSession){setError('Dashboard is not available for staff PIN sessions.');return;}setError('');try{const handoff=await request(AUTH+'/browser-handoff',saved?.token||accountToken.current,{});await window.Capacitor.Plugins.ExternalNavigation.openDashboard({handoffCode:handoff.code})}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
+ const openDashboard=async()=>{if(staffSession){setError('This staff account does not have Dashboard access.');return;}setError('');try{const handoff=await request(AUTH+'/browser-handoff',saved?.token||accountToken.current,{});await window.Capacitor.Plugins.ExternalNavigation.openDashboard({handoffCode:handoff.code})}catch(e){setError(e.message||'Could not open dashboard in your browser.')}};
  const openSupport=async()=>{setError('');try{await window.Capacitor.Plugins.ExternalNavigation.openSupport()}catch(e){setError(e.message||'Could not open support in your browser.')}};
  useEffect(()=>{const handler=e=>{if(e.source!==document.querySelector('iframe')?.contentWindow||e.origin!==window.location.origin||e.data?.type!=='customli:open-dashboard')return;openDashboard()};window.addEventListener('message',handler);return()=>window.removeEventListener('message',handler)},[saved?.token,staffSession]);
  const accountToken=useRef(''),accountId=useRef(''),sessionExpiresAt=useRef(''),installationId=useRef('');
@@ -102,7 +102,7 @@ function App(){
  },[screen,mode,locationId,locations]);
  const signIn=async (login,credential)=>{
 
-  if(login.mustChangeCredential){setFirstLogin(login);setOldPin(credential||'');setNewPin('');setConfirmPin('');setPinError('');setScreen('first-login');return;}
+  if(login.mustChangeCredential){setFirstLogin(login);setCurrentCredential(credential||'');setNewPassword('');setConfirmPassword('');setPasswordError('');setScreen('first-login');return;}
   const identity=await request(AUTH+'/me',login.token);
   setStaffSession(identity.operationalOnly===true||!dashboardAllowed(identity));
   const choices=await request(AUTH+'/locations',login.token);
@@ -137,24 +137,24 @@ function App(){
  const retry=async()=>{setBusy(true);setError('');try{const me=await request(AUTH+'/me',saved.token);if(me.mustChangeCredential){await revoke('Sign in to change your temporary credential.');return}setStaffSession(me.operationalOnly===true||!dashboardAllowed(me));await open(saved);setReconnecting(false);}catch(e){if(e.status===401||e.status===403)await revoke('Your session has ended. Sign in again.');else setError('Customli is still reconnecting.');}finally{setBusy(false);}};
  if(screen==='mode'&&saved){const device=saved.device;return <div className={styles.operating}><div className={styles.deviceMenu}><button type="button" aria-label="Device settings" aria-expanded={showDeviceMenu} onClick={()=>setShowDeviceMenu(v=>!v)}>⚙</button>{showDeviceMenu&&<nav aria-label="Device settings">{device.mode==='POS'&&<button onClick={()=>{setPrinterAction(true);setShowDeviceMenu(false);document.querySelector('iframe[title="Point of sale"]')?.contentWindow?.postMessage({type:'customli:printer-setup'},window.location.origin)}}>Printer settings</button>}<button onClick={switchApp} disabled={busy}>Home / Switch app</button><button onClick={openDashboard} disabled={busy}>Dashboard ↗</button><button onClick={logout} disabled={busy}>Sign out</button></nav>}</div>{printerAction&&device.mode!=='POS'&&<div className={styles.connection}><button onClick={switchApp}>Choose POS for printer setup</button></div>}{nearby.length>0&&device.mode!=='CDS'&&<div className={styles.discovery}>{nearby.length} nearby registered {nearby.length===1?'device':'devices'}</div>}{reconnecting&&device.mode!=='CDS'&&<div className={styles.connection}>Reconnecting to Customli</div>}{device.mode==='CDS'?<CustomerDisplay token={saved.token} device={device}/>:<iframe key={device.mode+':'+(device.station||'')} title={device.mode==='POS'?'Point of sale':'Kitchen display'} src={device.mode==='POS'?'./pos/index.html':'./kds/index.html'} className={styles.frame}/>}</div>;}
  if(screen==='first-login'&&firstLogin){
-  const isPin=firstLogin.credentialType==='pin';
-  const label=isPin?'PIN':'password';
   const rotate=async e=>{
    e.preventDefault();
-   if(newPin!==confirmPin||newPin===oldPin){setPinError('Choose a new '+label+' and confirm it.');return}
-   setBusy(true);setPinError('');
+   if(newPassword!==confirmPassword){setPasswordError('The new passwords do not match.');return}
+   if(newPassword===currentCredential){setPasswordError('Choose a password different from your temporary credential.');return}
+   if(newPassword.length<8||newPassword.length>128||!/[a-z]/.test(newPassword)||!/[A-Z]/.test(newPassword)||!/[0-9]/.test(newPassword)){setPasswordError('Use at least 8 characters, with a lowercase letter, an uppercase letter and a number.');return}
+   setBusy(true);setPasswordError('');
    try{
-    await request(AUTH+(isPin?'/profile/pin':'/profile/password'),firstLogin.token,isPin?{currentPin:oldPin,pin:newPin}:{currentPassword:oldPin,password:newPin});
-    setOldPin('');setNewPin('');setConfirmPin('');setFirstLogin(null);
+    await request(AUTH+'/profile/password',firstLogin.token,{currentPassword:currentCredential,password:newPassword});
+    setCurrentCredential('');setNewPassword('');setConfirmPassword('');setFirstLogin(null);
     try{await signIn({...firstLogin,mustChangeCredential:false});}
     catch(error){setError(error.message);setScreen('login');}
-   }catch(error){setPinError(error.message)}finally{setBusy(false)}
+   }catch(error){setPasswordError(error.message)}finally{setBusy(false)}
   };
-  return <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-label={'Set your '+label}><div className={styles.modalCard}>
-   <h2>Set your {label}</h2><p>{isPin?'Enter a new six-digit PIN to continue.':'Set a new password to continue.'}</p>
-   <form onSubmit={rotate}><label>New {label}<input type="password" autoComplete="new-password" required inputMode={isPin?'numeric':undefined} pattern={isPin?'[0-9]{6}':undefined} maxLength={isPin?6:128} value={newPin} onChange={e=>setNewPin(e.target.value)}/></label>
-   <label>Confirm {label}<input type="password" autoComplete="new-password" required maxLength={isPin?6:128} value={confirmPin} onChange={e=>setConfirmPin(e.target.value)}/></label>
-   {pinError&&<p role="alert">{pinError}</p>}<button type="submit" disabled={busy}>{busy?'Saving…':'Save '+label}</button></form></div></div>;
+  return <div className={styles.modalOverlay} role="dialog" aria-modal="true" aria-label="Set your password"><div className={styles.modalCard}>
+   <h2>Set your password</h2><p>Create a password to use for the Dashboard and Customli app.</p><p>Use at least 8 characters, including a lowercase letter, an uppercase letter and a number.</p>
+   <form onSubmit={rotate}><label>New password<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label>
+   <label>Confirm password<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label>
+   {passwordError&&<p role="alert">{passwordError}</p>}<button type="submit" disabled={busy}>{busy?'Saving…':'Save password'}</button></form></div></div>;
  }
  if(screen==='login')return <DashboardLogin onLogin={signIn} call={(path,body)=>request(AUTH+path,'',body)} sessionMessage={error}/>;
  if(screen==='setup')return <main className={styles.launcher}>
