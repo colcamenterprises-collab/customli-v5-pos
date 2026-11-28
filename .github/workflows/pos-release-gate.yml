@@ -32,3 +32,14 @@ jobs:
           name: pos-release-evidence
           path: qa/release-results/
           retention-days: 14
+      - name: Trigger combined Android test APK build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.CUSTOMLI_V5_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::Set CUSTOMLI_V5_DISPATCH_TOKEN with contents:write on customli-v5 to enable automatic POS-to-Android build handoff."
+            exit 0
+          fi
+          jq -n --arg sha "$GITHUB_SHA" '{event_type:"customli-v5-pos-updated",client_payload:{sha:$sha}}' |
+            gh api --method POST repos/colcamenterprises-collab/customli-v5/dispatches --input -
