@@ -32,7 +32,9 @@ async function scenario({mode='CDS',network=false,status=200,expired=false,stale
   }}}};
  },{device,mode,network,status,expired,stale,registered});
  // Reused KDS requests are actual fetch from the local iframe.
- await context.route('https://customli.io/v5-kds/**',route=>{const url=route.request().url();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(url.includes('/api/me')?{id:'device-one',station:'Expo',label:'Expo'}:[])});});
+ const mockKitchenApi=route=>{const url=route.request().url();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(url.includes('/api/me')?{id:'device-one',station:'Expo',label:'Expo'}:[])});};
+ await context.route('https://customli.io/v5-kds/**',mockKitchenApi);
+ await context.route('https://customli.io/v5-kds-test/**',mockKitchenApi);
  const page=await context.newPage();await page.goto(base);return{context,page};
 }
 try{

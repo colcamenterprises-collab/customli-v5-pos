@@ -5,10 +5,12 @@ import {cpSync,existsSync,mkdirSync,readFileSync,renameSync,rmSync,writeFileSync
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const kds=path.resolve(process.env.CUSTOMLI_KDS_PUBLIC||path.join(root,'../customli-v5/customli-v5-kds/public'));
+const kdsCandidates=[process.env.CUSTOMLI_KDS_PUBLIC,path.join(root,'../customli-v5/customli-v5-kds/public'),path.join(root,'../dashboard/customli-v5-kds/public')].filter(Boolean).map(candidate=>path.resolve(candidate));
+const kds=kdsCandidates.find(candidate=>['index.html','styles.css','app.js'].every(file=>existsSync(path.join(candidate,file))));
+if(!kds)throw Error('KDS public assets not found. Set CUSTOMLI_KDS_PUBLIC to their directory. Checked: '+kdsCandidates.join(', '));
 const origin=process.env.CUSTOMLI_PLATFORM_ORIGIN||'https://customli.io';
 if(!/^https:\/\/[^/]+$/.test(origin))throw Error('CUSTOMLI_PLATFORM_ORIGIN must be an HTTPS origin');
-for(const file of ['index.html','styles.css','app.js'])if(!existsSync(path.join(kds,file)))throw Error('KDS asset missing: '+path.join(kds,file));
+
 const environment=process.env.CUSTOMLI_ANDROID_ENV||'production';
 if(!['production','test'].includes(environment))throw Error('Unsupported Android build environment');
 const isTest=environment==='test';
